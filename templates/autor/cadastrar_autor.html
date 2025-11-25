@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    {% if editando %}Editar Autor{% else %}Cadastrar Autor{% endif %} | SIGA
+{% endblock %}
+
+{% block content %}
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">
+            {% if editando %}
+                <i class="fas fa-edit"></i> Editar Autor: {{ autor.nome }}
+            {% else %}
+                <i class="fas fa-feather-alt"></i> Cadastrar Autor
+            {% endif %}
+        </h6>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="">
+            {% csrf_token %}
+            <div class="form-group">
+                {{ form.nome.label_tag }}
+                {{ form.nome }}
+                {{ form.nome.errors }}
+            </div>
+            <div class="form-group">
+                {{ form.nacionalidade.label_tag }}
+                {{ form.nacionalidade }}
+                {{ form.nacionalidade.errors }}
+            </div>
+            <div class="form-group"> 
+                {{ form.biografia.label_tag }} 
+                {{ form.biografia }} 
+                {{ form.biografia.errors }} 
+            </div>
+            <div class="card-footer text-center bg-white px-0">
+                <a href="{% url 'autores:autor_list' %}" class="btn btn-secondary">Cancelar</a>
+                <button type="submit" class="btn btn-primary">Salvar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

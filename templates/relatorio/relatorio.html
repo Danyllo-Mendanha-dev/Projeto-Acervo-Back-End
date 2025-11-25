@@ -1,0 +1,136 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Central de Relatórios | Biblioteca{% endblock %}
+
+{% block content %}
+
+<style>
+    /* Transição suave para todos os elementos do card */
+    .card-hover, 
+    .card-hover i, 
+    .card-hover h5, 
+    .card-hover p, 
+    .card-hover .btn {
+        transition: all 0.3s ease-in-out;
+    }
+
+    /* Efeito de "Levantar" o card */
+    .card-hover:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 1rem 3rem rgba(0,0,0,.175)!important;
+    }
+
+    /* --- VERMELHO (Leitores com Atraso) --- */
+    .card-hover.border-danger:hover {
+        background-color: #e74a3b; /* Cor Danger do Bootstrap */
+        color: white;
+    }
+    .card-hover.border-danger:hover .text-danger {
+        color: white !important; /* Torna o ícone branco */
+    }
+    .card-hover.border-danger:hover .btn-danger {
+        background-color: white;
+        color: #e74a3b;
+        border-color: white;
+    }
+
+    /* --- AZUL (Histórico por Livro) --- */
+    .card-hover.border-primary:hover {
+        background-color: #4e73df; /* Cor Primary do Bootstrap */
+        color: white;
+    }
+    .card-hover.border-primary:hover .text-primary {
+        color: white !important;
+    }
+    .card-hover.border-primary:hover .btn-primary {
+        background-color: white;
+        color: #4e73df;
+        border-color: white;
+    }
+
+    /* --- VERDE (Livros Emprestados) --- */
+    .card-hover.border-success:hover {
+        background-color: #1cc88a; /* Cor Success do Bootstrap */
+        color: white;
+    }
+    .card-hover.border-success:hover .text-success {
+        color: white !important;
+    }
+    .card-hover.border-success:hover .btn-success {
+        background-color: white;
+        color: #1cc88a;
+        border-color: white;
+    }
+</style>
+
+<div class="container py-5">
+    <div class="text-center mb-5">
+        <h2 class="font-weight-bold">Central de Relatórios</h2>
+        <p class="lead text-muted">
+            Selecione um dos relatórios abaixo para extrair insights do sistema.
+        </p>
+    </div>
+
+    <div class="row">
+        
+        <div class="col-md-4 mb-4 d-flex align-items-stretch">
+            <div class="card w-100 text-center shadow border-danger card-hover">
+                <div class="card-body d-flex flex-column">
+                    <div class="mb-3">
+                        <i class="fas fa-user-clock fa-3x text-danger"></i>
+                    </div>
+                    <h5 class="card-title font-weight-bold">Leitores com Atraso</h5>
+                    <p class="card-text small">
+                        Lista todos os leitores com empréstimos cuja devolução está pendente.
+                    </p>
+                    <div class="mt-auto">
+                        <a href="{% url 'relatorios:relatorio_leitores_atrasados' %}" class="btn btn-danger">
+                            Gerar Relatório
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4 mb-4 d-flex align-items-stretch">
+            <div class="card w-100 text-center shadow-sm border-primary card-hover">
+                <div class="card-body d-flex flex-column">
+                    <div class="mb-3">
+                        <i class="fas fa-history fa-3x text-primary"></i>
+                    </div>
+                    <h5 class="card-title font-weight-bold">Histórico por Livro</h5>
+                    <p class="card-text small">
+                        Permite selecionar uma obra e visualizar todo o seu histórico de empréstimos.
+                    </p>
+                    <div class="mt-auto">
+                        <a href="{% url 'relatorios:relatorio_historico_livro' %}" class="btn btn-primary">
+                            Iniciar Consulta
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4 mb-4 d-flex align-items-stretch">
+            <div class="card w-100 text-center shadow-sm border-success card-hover">
+                <div class="card-body d-flex flex-column">
+                    <div class="mb-3">
+                        <i class="fas fa-book-reader fa-3x text-success"></i>
+                    </div>
+                    <h5 class="card-title font-weight-bold">Livros Emprestados</h5>
+                    <p class="card-text small">
+                        Gera uma lista de todos os exemplares que não estão disponíveis no acervo.
+                    </p>
+                    <div class="mt-auto">
+                        <a href="{% url 'relatorios:relatorio_livros_emprestados' %}" class="btn btn-success">
+                            Ver Lista
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

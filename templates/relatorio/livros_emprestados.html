@@ -1,0 +1,192 @@
+{% extends 'base.html' %}
+{% block title %}Relatório: Livros Emprestados | Biblioteca{% endblock %}
+
+{% block content %}
+
+<style>
+    .badge-soft-success {
+        background-color: #d1e7dd;
+        color: #0f5132;
+        font-weight: 600;
+        padding: 0.5em 0.8em;
+        border-radius: 0.35rem;
+    }
+    .badge-soft-danger {
+        background-color: #f8d7da;
+        color: #721c24;
+        font-weight: 600;
+        padding: 0.5em 0.8em;
+        border-radius: 0.35rem;
+    }
+    .table-row-hover:hover {
+        background-color: #f0fff4; /* Um verde muito sutil no hover */
+    }
+</style>
+
+<div class="container-fluid">
+
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800 font-weight-bold">
+            <i class="fas fa-book-reader text-success mr-2"></i>Livros Emprestados
+        </h1>
+        <div>
+            <button onclick="window.print()" class="btn btn-sm btn-secondary shadow-sm mr-2">
+                <i class="fas fa-print fa-sm text-white-50"></i> Imprimir
+            </button>
+            <a href="{% url 'relatorios:relatorio_index' %}" class="btn btn-sm btn-primary shadow-sm">
+                <i class="fas fa-arrow-left fa-sm text-white-50"></i> Voltar
+            </a>
+        </div>
+    </div>
+
+    {% if emprestimos %}
+
+    <div class="row mb-4">
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                Total Fora do Acervo
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {{ emprestimos|length }} Exemplares
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-dolly-flatbed fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-xl-8 col-md-6 mb-4">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                Dica de Gestão
+                            </div>
+                            <p class="mb-0 small text-muted">
+                                Utilize o botão <strong>"Receber"</strong> na tabela abaixo para ser redirecionado imediatamente para a tela de devolução com os dados do livro já preenchidos.
+                            </p>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-lightbulb fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-success">Listagem de Empréstimos Ativos</h6>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+                    <thead class="thead-light">
+                        <tr>
+                            <th style="width: 30%">Obra / Autores</th>
+                            <th style="width: 20%">Leitor</th>
+                            <th class="text-center">Período</th>
+                            <th class="text-center">Status</th>
+                            <th class="text-center" style="width: 10%">Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for emprestimo in emprestimos %}
+                        <tr class="table-row-hover">
+                            
+                            <td class="align-middle">
+                                <div class="font-weight-bold text-dark">{{ emprestimo.livro_nome }}</div>
+                                <div class="small text-muted">
+                                    Patrimônio: {{ emprestimo.numero_patrimonio }}
+                                </div>
+                                <div class="small text-gray-500 font-italic mt-1">
+                                    <i class="fas fa-pen-nib fa-xs"></i>
+                                    {% for autor in emprestimo.autores_list %} 
+                                        {{ autor.nome }}{% if not forloop.last %}, {% endif %} 
+                                    {% empty %} 
+                                        Autor não informado 
+                                    {% endfor %}
+                                </div>
+                            </td>
+
+                            <td class="align-middle">
+                                <div class="font-weight-bold">{{ emprestimo.leitor_nome }}</div>
+                            </td>
+
+                            <td class="align-middle text-center">
+                                <div class="d-flex justify-content-center align-items-center">
+                                    <div class="mr-2">
+                                        <small class="d-block text-muted">Retirada</small>
+                                        <strong>{{ emprestimo.dt_emprestimo|date:"d/m" }}</strong>
+                                    </div>
+                                    <div class="text-gray-400 mx-2">
+                                        <i class="fas fa-long-arrow-alt-right"></i>
+                                    </div>
+                                    <div class="ml-2">
+                                        <small class="d-block text-muted">Devolução</small>
+                                        <strong class="{% if emprestimo.is_atrasado %}text-danger{% else %}text-success{% endif %}">
+                                            {{ emprestimo.dt_prevista_devolucao|date:"d/m" }}
+                                        </strong>
+                                    </div>
+                                </div>
+                                <small class="text-muted">{{ emprestimo.dt_prevista_devolucao|date:"Y" }}</small>
+                            </td>
+
+                            <td class="align-middle text-center">
+                                {% if emprestimo.is_atrasado %}
+                                    <span class="badge badge-soft-danger">
+                                        <i class="fas fa-exclamation-circle"></i> Atrasado
+                                    </span>
+                                {% else %}
+                                    <span class="badge badge-soft-success">
+                                        <i class="fas fa-check-circle"></i> No Prazo
+                                    </span>
+                                {% endif %}
+                            </td>
+
+                            <td class="align-middle text-center">
+                                <a href="{% url 'emprestimos:registrar_devolucao' %}?emprestimo_id={{ emprestimo.id_emprestimo }}" 
+                                   class="btn btn-outline-success btn-sm" 
+                                   title="Registrar Devolução deste item">
+                                    <i class="fas fa-undo-alt"></i> Receber
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    
+    <div class="row justify-content-center py-5">
+        <div class="col-md-6 text-center">
+            <div class="mb-4">
+                <span class="fa-stack fa-4x">
+                    <i class="fas fa-circle fa-stack-2x text-success"></i>
+                    <i class="fas fa-library fa-stack-1x fa-inverse"></i>
+                </span>
+            </div>
+            <h2 class="h4 font-weight-bold text-gray-800">Tudo no Lugar!</h2>
+            <p class="text-muted mb-4">Não há nenhum livro emprestado no momento. Todo o acervo está disponível nas estantes.</p>
+            <a href="{% url 'relatorios:relatorio_index' %}" class="btn btn-secondary">
+                Voltar ao Menu
+            </a>
+        </div>
+    </div>
+    
+    {% endif %}
+
+</div>
+{% endblock %}

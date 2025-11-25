@@ -1,0 +1,141 @@
+{% extends 'base.html' %}
+
+{% block title %}Registrar Devolução | Biblioteca{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow mb-4">
+            
+            <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-undo-alt"></i> Registrar Devolução
+                </h6>
+            </div>
+
+            <div class="card-body">
+                
+                <form method="GET" action="{% url 'emprestimos:registrar_devolucao' %}">
+                    <div class="form-group">
+                        <label for="emprestimo_id" class="font-weight-bold text-dark">Selecione o Empréstimo para Baixa:</label>
+                        <div class="input-group">
+                            <div class="input-group-prepend">
+                                <span class="input-group-text"><i class="fas fa-search"></i></span>
+                            </div>
+                            <select name="emprestimo_id" id="emprestimo_id" class="form-control" onchange="this.form.submit()">
+                                <option value="">-- Selecione um empréstimo ativo --</option>
+                                
+                                {% for id, label in lista_emprestimos_ativos %}
+                                    <option value="{{ id }}" {% if id == emprestimo_id_selecionado %}selected{% endif %}>
+                                        {{ label }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <small class="form-text text-muted">Selecione o livro para carregar os dados e calcular multas.</small>
+                    </div>
+                </form>
+                
+                {% if emprestimo %}
+                    <hr>
+                    
+                    {% if is_late %}
+                        <div class="alert alert-danger border-left-danger shadow-sm" role="alert">
+                            <div class="row align-items-center">
+                                <div class="col-auto">
+                                    <i class="fas fa-exclamation-triangle fa-2x"></i>
+                                </div>
+                                <div class="col">
+                                    <h5 class="alert-heading font-weight-bold mb-1">Devolução em Atraso!</h5>
+                                    <p class="mb-0">
+                                        Este livro deveria ter sido entregue em <strong>{{ emprestimo.dt_prevista_devolucao|date:"d/m/Y" }}</strong>.
+                                        <br>Atraso de: <strong>{{ dias_atraso }} dias</strong>.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-success border-left-success shadow-sm" role="alert">
+                            <div class="row align-items-center">
+                                <div class="col-auto">
+                                    <i class="fas fa-check-circle fa-2x"></i>
+                                </div>
+                                <div class="col">
+                                    <h5 class="alert-heading font-weight-bold mb-1">No Prazo</h5>
+                                    <p class="mb-0">A devolução está sendo realizada dentro da data prevista ({{ emprestimo.dt_prevista_devolucao|date:"d/m/Y" }}).</p>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    <div class="card bg-light mb-4 border-0">
+                        <div class="card-body">
+                            <h6 class="font-weight-bold text-secondary mb-3">Detalhes do Empréstimo</h6>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p class="mb-1"><small>Obra:</small><br><strong>{{ emprestimo.livro_nome }}</strong></p>
+                                    <p class="mb-1"><small>Patrimônio:</small><br><strong>{{ emprestimo.numero_patrimonio }}</strong></p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p class="mb-1"><small>Leitor:</small><br><strong>{{ emprestimo.leitor_nome }}</strong></p>
+                                    <p class="mb-1"><small>Data do Empréstimo:</small><br><strong>{{ emprestimo.dt_emprestimo|date:"d/m/Y" }}</strong></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <form method="POST" action="{% url 'emprestimos:registrar_devolucao' %}">
+                        {% csrf_token %}
+                        
+                        <input type="hidden" name="emprestimo_id" value="{{ emprestimo_id_selecionado }}">
+                        
+                        {% if is_late %}
+                            <div class="form-group">
+                                <label for="{{ form.multa.id_for_label }}" class="font-weight-bold text-danger">
+                                    {{ form.multa.label }}
+                                </label>
+                                <div class="input-group">
+                                    <div class="input-group-prepend">
+                                        <span class="input-group-text text-danger font-weight-bold">R$</span>
+                                    </div>
+                                    {{ form.multa }}
+                                </div>
+                                {{ form.multa.errors }}
+                                <small class="text-muted">Valor calculado automaticamente (R$ 1,00/dia). Ajuste se necessário.</small>
+                            </div>
+                        {% else %}
+                            {{ form.multa }}
+                        {% endif %}
+
+                        <div class="form-group">
+                            <label for="{{ form.ocorrencia.id_for_label }}" class="font-weight-bold">
+                                {{ form.ocorrencia.label }}
+                            </label>
+                            {{ form.ocorrencia }}
+                            {{ form.ocorrencia.errors }}
+                        </div>
+
+                        <hr>
+                        
+                        <div class="d-flex justify-content-end">
+                            <a href="{% url 'emprestimos:emprestimo_list' %}" class="btn btn-secondary mr-2">
+                                <i class="fas fa-times"></i> Cancelar
+                            </a>
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-check"></i> Confirmar Devolução
+                            </button>
+                        </div>
+                    </form>
+                
+                {% else %}
+                    <div class="text-center py-5 text-muted">
+                        <i class="fas fa-book-reader fa-4x mb-3 text-gray-300"></i>
+                        <p>Selecione um empréstimo acima para iniciar o processo de devolução.</p>
+                    </div>
+                {% endif %}
+
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

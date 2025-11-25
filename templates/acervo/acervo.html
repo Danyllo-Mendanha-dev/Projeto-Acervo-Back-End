@@ -1,0 +1,173 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Acervo Público | SIGA{% endblock %}
+
+{% block content %}
+
+<style>
+    /* Hero Section (Fundo da Busca) */
+    .search-hero {
+        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+        border-radius: 0.5rem;
+        padding: 3rem 2rem;
+        margin-bottom: 2rem;
+        color: white;
+    }
+
+    /* Card do Livro */
+    .book-card {
+        border: none;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        overflow: hidden; /* Para o gradiente não vazar */
+    }
+
+    .book-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.15) !important;
+    }
+
+    /* "Capa" simulada do livro */
+    .book-cover-placeholder {
+        height: 140px;
+        background: linear-gradient(45deg, #f8f9fc 0%, #e3e6f0 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-bottom: 1px solid #eaecf4;
+        position: relative;
+    }
+    
+    /* Variação de cor para a "lombada" visual */
+    .book-spine {
+        position: absolute;
+        left: 20px;
+        top: 0;
+        bottom: 0;
+        width: 10px;
+        background-color: rgba(78, 115, 223, 0.2);
+    }
+
+    /* Estilo do Título e Autor */
+    .book-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #4e73df;
+        line-height: 1.2;
+        margin-bottom: 0.5rem;
+        height: 2.4em; /* Limita a 2 linhas */
+        overflow: hidden;
+    }
+</style>
+
+<div class="container-fluid">
+
+    <div class="card shadow mb-5 border-0">
+        <div class="search-hero text-center shadow-sm">
+            <h2 class="font-weight-bold mb-2"><i class="fas fa-book-open mr-2"></i>Acervo Público</h2>
+            <p class="mb-4 text-white-50">Explore nosso catálogo e verifique a disponibilidade dos exemplares.</p>
+            
+            <div class="row justify-content-center">
+                <div class="col-md-8">
+                    <form method="GET" action="{% url 'acervo:acervo_index' %}">
+                        <div class="input-group input-group-lg bg-white rounded shadow-sm p-1">
+                            <input type="text" class="form-control border-0" name="q" 
+                                   placeholder="Digite o título da obra, nome do autor ou gênero..." 
+                                   value="{{ query|default:'' }}">
+                            <div class="input-group-append">
+                                <button class="btn btn-primary font-weight-bold px-4 rounded" type="submit">
+                                    <i class="fas fa-search"></i> Buscar
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        {% for livro in livros %}
+        <div class="col-xl-3 col-lg-4 col-md-6 mb-4 d-flex align-items-stretch">
+            <div class="card book-card shadow-sm w-100">
+                
+                <div class="book-cover-placeholder">
+                    <div class="book-spine"></div>
+                    <i class="fas fa-book fa-4x text-gray-300"></i>
+                    
+                    {% if livro.genero %}
+                    <span class="badge badge-light shadow-sm position-absolute" style="top: 10px; right: 10px; font-size: 0.75rem;">
+                        {{ livro.genero }}
+                    </span>
+                    {% endif %}
+                </div>
+
+                <div class="card-body d-flex flex-column">
+                    <h5 class="book-title" title="{{ livro.nome }}">
+                        {{ livro.nome }}
+                    </h5>
+                    
+                    <p class="card-text text-muted small mb-3">
+                        <i class="fas fa-pen-nib fa-xs mr-1"></i>
+                        {% for autor in livro.autores_list %}
+                            {{ autor.nome }}{% if not forloop.last %}, {% endif %}
+                        {% empty %}
+                            Autor não informado
+                        {% endfor %}
+                    </p>
+
+                    <div class="mt-auto">
+                        <p class="small text-gray-500 mb-2">ISBN: {{ livro.isbn|default:"-" }}</p>
+                        
+                        <hr class="my-2">
+
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small font-weight-bold {% if livro.exemplares_disponiveis > 0 %}text-success{% else %}text-danger{% endif %}">
+                                {% if livro.exemplares_disponiveis > 0 %}
+                                    Disponível
+                                {% else %}
+                                    Esgotado
+                                {% endif %}
+                            </span>
+                            <span class="small text-muted">
+                                {{ livro.exemplares_disponiveis }}/{{ livro.total_exemplares }}
+                            </span>
+                        </div>
+
+                        <div class="progress progress-sm">
+                            <div class="progress-bar {% if livro.exemplares_disponiveis > 0 %}bg-success{% else %}bg-secondary{% endif %}" 
+                            role="progressbar" 
+                            style="width: {% if livro.total_exemplares > 0 %}{% widthratio livro.exemplares_disponiveis livro.total_exemplares 100 %}{% else %}0{% endif %}%;"
+                            aria-valuenow="{{ livro.exemplares_disponiveis }}" 
+                            aria-valuemin="0" 
+                            aria-valuemax="{{ livro.total_exemplares }}">
+                        </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        
+        <div class="col-12 text-center py-5">
+            <div class="card shadow-sm border-0 py-5">
+                <div class="card-body">
+                    <i class="fas fa-search fa-3x text-gray-300 mb-3"></i>
+                    <h4 class="text-gray-800">Nenhuma obra encontrada</h4>
+                    <p class="text-muted">
+                        {% if query %}
+                            Não encontramos resultados para "<strong>{{ query }}</strong>". Tente outro termo.
+                        {% else %}
+                            O acervo ainda não possui livros cadastrados.
+                        {% endif %}
+                    </p>
+                    {% if query %}
+                        <a href="{% url 'acervo:acervo_index' %}" class="btn btn-primary btn-sm mt-2">Limpar Busca</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

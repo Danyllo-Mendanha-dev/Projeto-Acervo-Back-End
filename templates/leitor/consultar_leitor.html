@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+
+{% block title %}Gerenciar Leitores | Biblioteca{% endblock %}
+
+{% block content %}
+<div class="card shadow mb-4">
+    <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+        <h6 class="m-0 font-weight-bold text-primary">
+            <i class="fas fa-users"></i> Gerenciamento de Leitores
+        </h6>
+        <a href="{% url 'leitores:cadastrar_leitor' %}" class="btn btn-primary btn-sm">
+            <i class="fas fa-plus-circle"></i> Cadastrar Leitor
+        </a>
+    </div>
+    <div class="card-body">
+        <p>Utilize esta página para gerenciar os Leitores do sistema.</p>
+        <form method="GET" action="{% url 'leitores:leitor_list' %}">
+            <div class="input-group mb-4">
+                <input type="text" class="form-control" name="q" placeholder="Buscar por nome ou CPF..." value="{{ request.GET.q }}">
+                <div class="input-group-append">
+                    <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search"></i> Buscar</button>
+                </div>
+            </div>
+        </form>
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover">
+                <thead class="thead-light">
+                    <tr>
+                        <th>Nome</th>
+                        <th>CPF</th>
+                        <th>E-mail</th>
+                        <th class="text-center">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for leitor in leitores %}
+                    <tr>
+                        <td>{{ leitor.nome }}</td>
+                        <td>{{ leitor.cpf }}</td>
+                        <td>{{ leitor.email }}</td>
+                        <td class="text-center">
+                            <a href="{% url 'leitores:atualizar_leitor' leitor.pk %}" class="btn btn-info btn-sm" title="Editar"><i class="fas fa-edit"></i></a>
+                            <a href="{% url 'leitores:excluir_leitor' leitor.pk %}" class="btn btn-danger btn-sm" title="Excluir"><i class="fas fa-trash-alt"></i></a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="text-center">Nenhum leitor encontrado.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

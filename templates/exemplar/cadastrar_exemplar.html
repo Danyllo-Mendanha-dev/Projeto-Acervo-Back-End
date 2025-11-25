@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if editando %}Editar Exemplar{% else %}Cadastrar Exemplar{% endif %} | Biblioteca{% endblock %}
+
+{% block content %}
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">
+            {% if editando %}
+                <i class="fas fa-edit"></i> Editar Exemplar: {{ exemplar.numero_patrimonio }} ({{ exemplar.livro_nome }})
+            {% else %}
+                <i class="fas fa-book-medical"></i> Cadastrar Exemplar
+            {% endif %}
+        </h6>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="">
+            {% csrf_token %}
+            <div class="form-group">
+                {{ form.livro.label_tag }}
+                {{ form.livro }}
+                {{ form.livro.errors }}
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group col-md-6">{{ form.numero_patrimonio.label_tag }}{{ form.numero_patrimonio }}{{ form.numero_patrimonio.errors }}</div>
+                <div class="form-group col-md-6">{{ form.edicao.label_tag }}{{ form.edicao }}{{ form.edicao.errors }}</div>
+            </div>
+
+            <div class="form-group">
+                {{ form.localizacao.label_tag }}
+                {{ form.localizacao }}
+                {{ form.localizacao.errors }}
+            </div>
+
+            <div class="form-row">
+                <div class="form-group col-md-6">{{ form.dt_aquisicao.label_tag }}{{ form.dt_aquisicao }}{{ form.dt_aquisicao.errors }}</div>
+                <div class="form-group col-md-6">{{ form.dt_publicacao.label_tag }}{{ form.dt_publicacao }}{{ form.dt_publicacao.errors }}</div>
+            </div>
+            
+            <div class="card-footer text-center bg-white px-0">
+                <a href="{% url 'exemplares:exemplar_list' %}" class="btn btn-secondary">Cancelar</a>
+                <button type="submit" class="btn btn-primary">Salvar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

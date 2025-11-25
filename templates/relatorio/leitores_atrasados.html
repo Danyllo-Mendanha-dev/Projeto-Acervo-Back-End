@@ -1,0 +1,196 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Relatório de Inadimplência | Biblioteca{% endblock %}
+
+{% block content %}
+
+<style>
+    .btn-whatsapp {
+        background-color: #25D366;
+        color: white;
+        border: none;
+        transition: all 0.3s;
+    }
+    .btn-whatsapp:hover {
+        background-color: #128C7E;
+        color: white;
+        transform: scale(1.05);
+    }
+    .table-row-hover:hover {
+        background-color: #f8f9fc;
+    }
+    .badge-soft-danger {
+        background-color: #fce8e6;
+        color: #e74a3b;
+        font-weight: 600;
+        padding: 0.5em 0.75em;
+        border-radius: 0.35rem;
+    }
+</style>
+
+<div class="container-fluid">
+
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800 font-weight-bold">
+            <i class="fas fa-user-clock text-danger mr-2"></i>Leitores com Atraso
+        </h1>
+        <div>
+            <button onclick="window.print()" class="btn btn-sm btn-secondary shadow-sm mr-2">
+                <i class="fas fa-print fa-sm text-white-50"></i> Imprimir Lista
+            </button>
+            <a href="{% url 'relatorios:relatorio_index' %}" class="btn btn-sm btn-primary shadow-sm">
+                <i class="fas fa-arrow-left fa-sm text-white-50"></i> Voltar
+            </a>
+        </div>
+    </div>
+
+    {% if emprestimos_atrasados %}
+    
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-danger shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Total de Inadimplentes</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ emprestimos_atrasados|length }} Leitores</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-users fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-9 col-md-6 mb-4">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Ação Recomendada</div>
+                            <p class="mb-0 small text-gray-600">Utilize o botão de WhatsApp na tabela abaixo para enviar lembretes automáticos de devolução.</p>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-bullhorn fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Lista Detalhada de Pendências</h6>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+                    <thead class="thead-light">
+                        <tr>
+                            <th style="width: 25%">Leitor</th>
+                            <th style="width: 30%">Obra Emprestada</th>
+                            <th class="text-center">Vencimento</th>
+                            <th class="text-center">Situação</th>
+                            <th class="text-center" style="width: 10%">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for emprestimo in emprestimos_atrasados %}
+                        <tr class="table-row-hover">
+                            <td class="align-middle">
+                                <div class="font-weight-bold text-dark">{{ emprestimo.leitor_nome }}</div>
+                                {% if emprestimo.leitor_telefone %}
+                                    <div class="small text-muted">
+                                        <i class="fas fa-phone-alt fa-xs mr-1"></i> {{ emprestimo.leitor_telefone }}
+                                    </div>
+                                {% else %}
+                                    <div class="small text-muted font-italic">Sem telefone cadastrado</div>
+                                {% endif %}
+                            </td>
+
+                            <td class="align-middle">
+                                {{ emprestimo.livro_nome }}
+                                <span class="badge badge-light border ml-1">Pat. {{ emprestimo.numero_patrimonio }}</span>
+                            </td>
+
+                            <td class="text-center align-middle">
+                                <span class="text-danger font-weight-bold">
+                                    {{ emprestimo.dt_prevista_devolucao|date:"d/m/Y" }}
+                                </span>
+                            </td>
+
+                            <td class="text-center align-middle">
+                                <span class="badge badge-soft-danger">
+                                    <i class="fas fa-clock mr-1"></i> {{ emprestimo.dias_atraso }} dias de atraso
+                                </span>
+                            </td>
+
+                            <td class="text-center align-middle">
+                                {% if emprestimo.leitor_telefone %}
+                                    <button class="btn btn-whatsapp btn-sm btn-circle" 
+                                            title="Enviar Cobrança via WhatsApp"
+                                            onclick="enviarCobranca('{{ emprestimo.leitor_telefone }}', '{{ emprestimo.leitor_nome }}', '{{ emprestimo.livro_nome }}')">
+                                        <i class="fab fa-whatsapp"></i>
+                                    </button>
+                                {% else %}
+                                    <button class="btn btn-secondary btn-sm btn-circle" disabled title="Telefone indisponível">
+                                        <i class="fas fa-comment-slash"></i>
+                                    </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    <div class="row justify-content-center py-5">
+        <div class="col-md-6 text-center">
+            <div class="mb-4">
+                <span class="fa-stack fa-4x">
+                    <i class="fas fa-circle fa-stack-2x text-success"></i>
+                    <i class="fas fa-check fa-stack-1x fa-inverse"></i>
+                </span>
+            </div>
+            <h2 class="h4 font-weight-bold text-gray-800">Nenhuma Pendência Encontrada!</h2>
+            <p class="text-muted mb-4">Parabéns! Todos os empréstimos estão em dia ou já foram devolvidos.</p>
+            <a href="{% url 'relatorios:relatorio_index' %}" class="btn btn-primary">
+                Voltar para Relatórios
+            </a>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+<script>
+    function enviarCobranca(telefone, nome, livro) {
+        // 1. Limpa o telefone (remove parenteses, traços e espaços)
+        let cleanPhone = telefone.replace(/\D/g, '');
+
+        // 2. Verifica se tem o DDI (55). Se não tiver e tiver tamanho de celular BR, adiciona.
+        // Lógica simples: se tiver 10 ou 11 dígitos, assume que é Brasil e adiciona 55
+        if (cleanPhone.length >= 10 && cleanPhone.length <= 11) {
+            cleanPhone = '55' + cleanPhone;
+        }
+
+        // 3. Cria a mensagem personalizada
+        // %0a é a quebra de linha na URL
+        let texto = `Olá, *${nome}*! 👋%0a%0a`;
+        texto += `Consta em nosso sistema que a devolução do livro *"${livro}"* está em atraso. 📕%0a%0a`;
+        texto += `Por favor, compareça à biblioteca para regularizar a situação e evitar multas maiores.%0a%0a`;
+        texto += `_Atenciosamente, Biblioteca._`;
+
+        // 4. Abre a API do WhatsApp
+        let url = `https://wa.me/${cleanPhone}?text=${texto}`;
+        window.open(url, '_blank');
+    }
+</script>
+
+{% endblock %}

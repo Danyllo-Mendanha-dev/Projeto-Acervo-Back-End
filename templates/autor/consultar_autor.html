@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+
+{% block title %}Gerenciar Autores | Biblioteca{% endblock %}
+
+{% block content %}
+<div class="card shadow mb-4">
+    <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+        <h6 class="m-0 font-weight-bold text-primary">
+            <i class="fas fa-feather-alt"></i> Gerenciamento de Autores
+        </h6>
+        <a href="{% url 'autores:cadastrar_autor' %}" class="btn btn-primary btn-sm">
+            <i class="fas fa-plus-circle"></i> Cadastrar Autor
+        </a>
+    </div>
+    <div class="card-body">
+        <p>Utilize esta página para gerenciar os autores do sistema.</p>
+        <form method="GET" action="{% url 'autores:autor_list' %}">
+            <div class="input-group mb-4">
+                <input type="text" class="form-control" name="q" placeholder="Buscar por nome..." value="{{ request.GET.q }}">
+                <div class="input-group-append">
+                    <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search"></i> Buscar</button>
+                </div>
+            </div>
+        </form>
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover">
+                <thead class="thead-light">
+                    <tr>
+                        <th>Nome</th>
+                        <th>Nacionalidade</th>
+                        <th class="text-center">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for autor in autores %}
+                    <tr>
+                        <td>{{ autor.nome }}</td>
+                        <td>{{ autor.nacionalidade|default:"Não informada" }}</td>
+                        <td class="text-center">
+                            <a href="{% url 'autores:atualizar_autor' autor.pk %}" class="btn btn-info btn-sm" title="Editar"><i class="fas fa-edit"></i></a>
+                            <a href="{% url 'autores:excluir_autor' autor.pk %}" class="btn btn-danger btn-sm" title="Excluir"><i class="fas fa-trash-alt"></i></a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="3" class="text-center">Nenhum autor encontrado.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

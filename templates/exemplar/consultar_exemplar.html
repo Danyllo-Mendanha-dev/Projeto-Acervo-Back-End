@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+
+{% block title %}Gerenciar Exemplares | Biblioteca{% endblock %}
+
+{% block content %}
+<div class="card shadow mb-4">
+    <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+        <h6 class="m-0 font-weight-bold text-primary">
+            <i class="fas fa-layer-group"></i> Gerenciamento de Exemplares
+        </h6>
+        <a href="{% url 'exemplares:cadastrar_exemplar' %}" class="btn btn-primary btn-sm">
+            <i class="fas fa-plus-circle"></i> Cadastrar Exemplar
+        </a>
+    </div>
+    <div class="card-body">
+        <p>Utilize esta página para gerenciar os exemplares (cópias físicas) dos livros.</p>
+        <form method="GET" action="{% url 'exemplares:exemplar_list' %}">
+            <div class="input-group mb-4">
+                <input type="text" class="form-control" name="q" placeholder="Buscar por Título da Obra ou Nº Patrimônio..." value="{{ request.GET.q }}">
+                <div class="input-group-append">
+                    <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search"></i> Buscar</button>
+                </div>
+            </div>
+        </form>
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover">
+                <thead class="thead-light">
+                    <tr>
+                        <th>Obra (Livro)</th>
+                        <th>Nº Patrimônio</th>
+                        <th>Localização</th>
+                        <th class="text-center">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for exemplar in exemplares %}
+                    <tr>
+                        <td>{{ exemplar.livro_nome }}</td>
+                        <td>{{ exemplar.numero_patrimonio }}</td>
+                        <td>{{ exemplar.localizacao|default:"Não informada" }}</td>
+                        <td class="text-center">
+                            <a href="{% url 'exemplares:atualizar_exemplar' exemplar.pk %}" class="btn btn-info btn-sm" title="Editar"><i class="fas fa-edit"></i></a>
+                            <a href="{% url 'exemplares:excluir_exemplar' exemplar.pk %}" class="btn btn-danger btn-sm" title="Excluir"><i class="fas fa-trash-alt"></i></a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="text-center">Nenhum exemplar encontrado.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

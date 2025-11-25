@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+
+{% block title %}Gerenciar Empréstimos | Biblioteca{% endblock %}
+
+{% block content %}
+<div class="card shadow mb-4">
+    <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+        <h6 class="m-0 font-weight-bold text-primary">
+            <i class="fas fa-exchange-alt"></i> Empréstimos Ativos
+            <span class="badge badge-primary ml-2">{{ total_ativos }}</span>
+        </h6>
+        <a href="{% url 'emprestimos:cadastrar_emprestimo' %}" class="btn btn-primary btn-sm shadow-sm">
+            <i class="fas fa-plus-circle"></i> Novo Empréstimo
+        </a>
+    </div>
+    
+    <div class="card-body">
+        
+        <form method="GET" action="{% url 'emprestimos:emprestimo_list' %}" class="mb-4">
+            <div class="input-group">
+                <input type="text" class="form-control bg-light small" name="q" 
+                       placeholder="Pesquisar por Título, Leitor ou Patrimônio..." 
+                       value="{{ query|default:'' }}">
+                <div class="input-group-append">
+                    <button class="btn btn-primary" type="submit">
+                        <i class="fas fa-search fa-sm"></i>
+                    </button>
+                </div>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover" id="dataTable" width="100%" cellspacing="0">
+                <thead class="thead-light">
+                    <tr>
+                        <th>Obra</th>
+                        <th>Leitor</th>
+                        <th>Data Empréstimo</th>
+                        <th>Previsão de Devolução</th>
+                        <th class="text-center">Status</th>
+                        <th class="text-center">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for emprestimo in emprestimos %}
+                    <tr class="{% if emprestimo.is_atrasado %}table-danger{% endif %}">
+                        
+                        <td class="align-middle">
+                            <div class="font-weight-bold">{{ emprestimo.livro_nome }}</div>
+                            <small class="text-muted">Patrimônio: {{ emprestimo.numero_patrimonio }}</small>
+                        </td>
+                        
+                        <td class="align-middle">{{ emprestimo.leitor_nome }}</td>
+                        
+                        <td class="align-middle">{{ emprestimo.dt_emprestimo|date:"d/m/Y" }}</td>
+                        
+                        <td class="align-middle">
+                            <span class="{% if emprestimo.is_atrasado %}text-danger font-weight-bold{% endif %}">
+                                {{ emprestimo.dt_prevista_devolucao|date:"d/m/Y" }}
+                            </span>
+                            {% if emprestimo.is_atrasado %}
+                                <small class="d-block text-danger">
+                                    <i class="fas fa-exclamation-circle"></i> Atrasado há {{ emprestimo.dias_atraso }} dia(s)
+                                </small>
+                            {% endif %}
+                        </td>
+
+                        <td class="text-center align-middle">
+                            {% if emprestimo.is_atrasado %}
+                                <span class="badge badge-danger">Vencido</span>
+                            {% else %}
+                                <span class="badge badge-success">No Prazo</span>
+                            {% endif %}
+                        </td>
+                        
+                        <td class="text-center align-middle">
+                            <div class="btn-group" role="group">
+                                <a href="{% url 'emprestimos:registrar_devolucao' %}?emprestimo_id={{ emprestimo.pk }}" 
+                                   class="btn btn-success btn-sm" 
+                                   title="Registrar Devolução / Receber Livro">
+                                   <i class="fas fa-undo-alt"></i> Receber
+                                </a>
+                                
+                                <a href="{% url 'emprestimos:excluir_emprestimo' emprestimo.pk %}" 
+                                   class="btn btn-outline-danger btn-sm" 
+                                   title="Excluir Registro (Erro de Lançamento)"
+                                   onclick="return confirm('ATENÇÃO: Excluir este registro fará o empréstimo desaparecer como se nunca tivesse existido.\n\nPara devolver o livro, use o botão verde.\n\nDeseja realmente excluir?');">
+                                   <i class="fas fa-trash-alt"></i>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center py-5 text-muted">
+                            <i class="fas fa-check-circle fa-3x mb-3 text-gray-300"></i>
+                            <h5>Nenhum empréstimo ativo!</h5>
+                            <p>Todos os livros foram devolvidos ou nenhum empréstimo foi registrado ainda.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

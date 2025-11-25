@@ -1,0 +1,168 @@
+{% extends 'base.html' %}
+
+{% block title %}Histórico da Obra | Biblioteca{% endblock %}
+
+{% block content %}
+
+<style>
+    .badge-soft-success {
+        background-color: #d1e7dd;
+        color: #0f5132;
+        padding: 0.5em 0.8em;
+        border-radius: 10px;
+    }
+    .badge-soft-warning {
+        background-color: #fff3cd;
+        color: #664d03;
+        padding: 0.5em 0.8em;
+        border-radius: 10px;
+    }
+    .bg-gradient-book {
+        background: linear-gradient(45deg, #4e73df 0%, #224abe 100%);
+        color: white;
+    }
+</style>
+
+<div class="container-fluid">
+
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800 font-weight-bold">
+            <i class="fas fa-history text-primary mr-2"></i>Histórico por Obra
+        </h1>
+        <div>
+            {% if livro_selecionado %}
+            <button onclick="window.print()" class="btn btn-sm btn-secondary shadow-sm mr-2">
+                <i class="fas fa-print fa-sm text-white-50"></i> Imprimir
+            </button>
+            {% endif %}
+            <a href="{% url 'relatorios:relatorio_index' %}" class="btn btn-sm btn-primary shadow-sm">
+                <i class="fas fa-arrow-left fa-sm text-white-50"></i> Voltar
+            </a>
+        </div>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-4 bg-light">
+            <form method="GET" action="{% url 'relatorios:relatorio_historico_livro' %}">
+                <div class="row align-items-end">
+                    <div class="col-md-10">
+                        <label for="livro_id" class="font-weight-bold text-gray-700">Selecione a Obra para Consultar:</label>
+                        <div class="input-group input-group-lg">
+                            <div class="input-group-prepend">
+                                <span class="input-group-text bg-primary text-white"><i class="fas fa-book"></i></span>
+                            </div>
+                            <select name="livro_id" id="livro_id" class="form-control" onchange="this.form.submit()">
+                                <option value="">-- Selecione um livro da lista --</option>
+                                {% for livro in todos_livros %}
+                                    <option value="{{ livro.pk }}" {% if livro_selecionado.pk == livro.pk %}selected{% endif %}>
+                                        {{ livro.nome }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-primary btn-lg btn-block shadow-sm">
+                            <i class="fas fa-search"></i> Buscar
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div class="card-body">
+            
+            {% if livro_selecionado %}
+                
+                <div class="row mb-4">
+                    <div class="col-md-12">
+                        <div class="card border-left-primary shadow-sm h-100 py-2">
+                            <div class="card-body">
+                                <div class="row no-gutters align-items-center">
+                                    <div class="col mr-2">
+                                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                            Obra Selecionada
+                                        </div>
+                                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                            {{ livro_selecionado.nome }}
+                                        </div>
+                                        <p class="text-muted small mt-2 mb-0">
+                                            Esta obra já foi emprestada um total de <strong>{{ emprestimos|length }} vezes</strong>.
+                                        </p>
+                                    </div>
+                                    <div class="col-auto">
+                                        <i class="fas fa-bookmark fa-2x text-gray-300"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <h5 class="font-weight-bold text-secondary mb-3">Detalhamento dos Empréstimos</h5>
+
+                {% if emprestimos %}
+                <div class="table-responsive">
+                    <table class="table table-hover" id="dataTable">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Patrimônio (Exemplar)</th>
+                                <th>Leitor</th>
+                                <th>Data Retirada</th>
+                                <th>Data Devolução</th>
+                                <th class="text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for emprestimo in emprestimos %}
+                            <tr>
+                                <td class="align-middle">
+                                    <i class="fas fa-barcode text-gray-400 mr-1"></i> 
+                                    <strong>{{ emprestimo.numero_patrimonio }}</strong>
+                                </td>
+                                <td class="align-middle">{{ emprestimo.leitor_nome }}</td>
+                                <td class="align-middle">{{ emprestimo.dt_emprestimo|date:"d/m/Y" }}</td>
+                                <td class="align-middle">
+                                    {% if emprestimo.dt_devolucao %}
+                                        {{ emprestimo.dt_devolucao|date:"d/m/Y" }}
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center align-middle">
+                                    {% if emprestimo.status == 'Devolvido' %}
+                                        <span class="badge badge-soft-success">
+                                            <i class="fas fa-check mr-1"></i> Devolvido
+                                        </span>
+                                    {% else %}
+                                        <span class="badge badge-soft-warning">
+                                            <i class="fas fa-clock mr-1"></i> Em Andamento
+                                        </span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                    <div class="alert alert-info border-left-info" role="alert">
+                        <i class="fas fa-info-circle"></i> 
+                        Este livro existe no acervo, mas <strong>nunca foi emprestado</strong> até o momento.
+                    </div>
+                {% endif %}
+
+            {% else %}
+                <div class="text-center py-5">
+                    <img src="https://img.icons8.com/clouds/100/000000/book.png" alt="Livro" class="mb-3 opacity-75">
+                    <h4 class="text-gray-600">Nenhuma obra selecionada</h4>
+                    <p class="text-muted">Utilize a busca acima para visualizar o histórico de empréstimos de um livro.</p>
+                </div>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+{% endblock %}
