@@ -17,4 +17,7 @@ urlpatterns = [
     
     # (DELETE)
     path('excluir/<int:pk>/', views.excluir_funcionario_view, name='excluir_funcionario'),
+
+    # Reativar
+    path('reativar/<int:pk>/', views.reativar_funcionario_view, name='reativar_funcionario'),
 ]

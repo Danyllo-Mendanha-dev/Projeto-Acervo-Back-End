@@ -1,6 +1,6 @@
 from django.shortcuts import render, redirect
 from django.contrib import messages
-from django.db import connection
+from django.db import connection, IntegrityError
 # Importe o formulário do app local, e não do app antigo!
 # (Vamos criar este arquivo no Passo 2)
 from .forms import FuncionarioForm 
@@ -48,9 +48,10 @@ def consultar_funcionarios_view(request):
     query = request.GET.get('q', '') 
     
     with connection.cursor() as cursor:
-        sql = "SELECT id_funcionario, nome, email, telefone FROM Funcionario"
+        # Adicionei o campo 'status' no SELECT
+        sql = "SELECT id_funcionario, nome, email, telefone, status FROM Funcionario"
         params = []
-        
+
         if query:
             sql += " WHERE nome ILIKE %s OR email ILIKE %s ORDER BY nome"
             params.extend([f'%{query}%', f'%{query}%'])
@@ -64,7 +65,8 @@ def consultar_funcionarios_view(request):
                 'pk': row[0],
                 'nome': row[1],
                 'email': row[2],
-                'telefone': row[3]
+                'telefone': row[3],
+                'status': row[4] # Novo campo
             })
 
     return render(request, 'funcionario/consultar_funcionario.html', {'funcionarios': funcionarios})
@@ -76,12 +78,27 @@ def atualizar_funcionario_view(request, pk):
         row = cursor.fetchone()
         if not row:
             messages.error(request, 'Funcionário não encontrado.')
-            return redirect('funcionarios:funcionario_list') # ATENÇÃO AQUI!
+            return redirect('funcionarios:funcionario_list')
         
+        # --- CORREÇÃO DA DATA AQUI ---
+        # 1. Pega o objeto de data cru do banco (índice 4 conforme seu código original)
+        dt_nascimento_banco = row[4] 
+        
+        # 2. Converte para string 'dd/mm/aaaa' se existir
+        if dt_nascimento_banco:
+            dt_nascimento_formatada = dt_nascimento_banco.strftime('%d/%m/%Y')
+        else:
+            dt_nascimento_formatada = None
+        # -----------------------------
+
         funcionario_data = {
-            'pk': row[0], 'nome': row[1], 'telefone': row[2], 
-            'endereco': row[3], 'data_nascimento': row[4], 
-            'email': row[5], 'cpf': row[6]
+            'pk': row[0], 
+            'nome': row[1], 
+            'telefone': row[2], 
+            'endereco': row[3], 
+            'data_nascimento': dt_nascimento_formatada, # Usa a variável formatada
+            'email': row[5], 
+            'cpf': row[6]
         }
 
     if request.method == 'POST':
@@ -91,6 +108,7 @@ def atualizar_funcionario_view(request, pk):
             
             try:
                 with connection.cursor() as cursor:
+                    # Lógica para atualizar com ou sem senha
                     if dados['senha']:
                         sql_query = """
                             UPDATE Funcionario 
@@ -115,11 +133,12 @@ def atualizar_funcionario_view(request, pk):
                     cursor.execute(sql_query, params)
 
                 messages.success(request, 'Funcionário atualizado com sucesso!')
-                return redirect('funcionarios:funcionario_list') # ATENÇÃO AQUI!
+                return redirect('funcionarios:funcionario_list')
 
             except Exception as e:
                 messages.error(request, f'Ocorreu um erro ao atualizar: {e}')
     else:
+        # Passa os dados formatados para o form
         form = FuncionarioForm(initial=funcionario_data)
 
     context = {
@@ -129,21 +148,72 @@ def atualizar_funcionario_view(request, pk):
     }
     return render(request, 'funcionario/cadastrar_funcionario.html', context)
 
-# DELETE (Excluir)
+# DELETE (Excluir / Desativar)
 def excluir_funcionario_view(request, pk):
     with connection.cursor() as cursor:
-        cursor.execute("SELECT nome FROM Funcionario WHERE id_funcionario = %s", [pk])
+        cursor.execute("SELECT nome, status FROM Funcionario WHERE id_funcionario = %s", [pk])
         funcionario = cursor.fetchone()
     
     if not funcionario:
         messages.error(request, 'Funcionário não encontrado.')
-        return redirect('funcionarios:funcionario_list') # ATENÇÃO AQUI!
+        return redirect('funcionarios:funcionario_list')
+
+    nome_func = funcionario[0]
+    status_atual = funcionario[1]
 
     if request.method == 'POST':
-        with connection.cursor() as cursor:
-            cursor.execute("DELETE FROM Funcionario WHERE id_funcionario = %s", [pk])
-        
-        messages.success(request, f'Funcionário "{funcionario[0]}" excluído com sucesso.')
-        return redirect('funcionarios:funcionario_list') # ATENÇÃO AQUI!
+        try:
+            # Tenta excluir fisicamente primeiro
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM Funcionario WHERE id_funcionario = %s", [pk])
+            
+            messages.success(request, f'Funcionário "{nome_func}" excluído permanentemente.')
+            return redirect('funcionarios:funcionario_list')
 
-    return render(request, 'funcionario/excluir_funcionario.html', {'funcionario': {'nome': funcionario[0]}})
+        except IntegrityError:
+            # SE FALHAR (tem vínculos), fazemos a DESATIVAÇÃO (Soft Delete)
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE Funcionario SET status = 'Inativo' WHERE id_funcionario = %s", 
+                        [pk]
+                    )
+                
+                messages.warning(request, f'O funcionário "{nome_func}" possui registros no sistema e não pode ser apagado. Ele foi DESATIVADO e não terá mais acesso.')
+                return redirect('funcionarios:funcionario_list')
+            
+            except Exception as e:
+                messages.error(request, f'Erro ao tentar desativar: {e}')
+                return redirect('funcionarios:funcionario_list')
+
+    return render(request, 'funcionario/excluir_funcionario.html', {'funcionario': {'nome': nome_func}})
+
+# --- REATIVAR (Novo) ---
+def reativar_funcionario_view(request, pk):
+    # Apenas processa se for um POST (segurança) ou GET se preferir simplificar
+    # Vamos fazer via GET para facilitar o link, mas POST seria o ideal semanticamente
+    
+    try:
+        with connection.cursor() as cursor:
+            # Verifica se o funcionário existe
+            cursor.execute("SELECT nome FROM Funcionario WHERE id_funcionario = %s", [pk])
+            row = cursor.fetchone()
+            
+            if not row:
+                messages.error(request, 'Funcionário não encontrado.')
+                return redirect('funcionarios:funcionario_list')
+            
+            nome = row[0]
+
+            # Executa a reativação
+            cursor.execute(
+                "UPDATE Funcionario SET status = 'Ativo' WHERE id_funcionario = %s", 
+                [pk]
+            )
+        
+        messages.success(request, f'O funcionário "{nome}" foi reativado com sucesso!')
+        
+    except Exception as e:
+        messages.error(request, f'Erro ao reativar: {e}')
+
+    return redirect('funcionarios:funcionario_list')

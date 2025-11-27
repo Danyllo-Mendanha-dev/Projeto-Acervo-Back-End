@@ -51,17 +51,33 @@ def cadastrar_livro_view(request):
 
     return render(request, 'livro/cadastrar_livro.html', {'form': form, 'editando': False})
 
-
 # READ (Consultar Livros)
 def consultar_livros_view(request):
     query = request.GET.get('q', '')
     
     with connection.cursor() as cursor:
+        # AQUI ESTÁ A MUDANÇA:
+        # Usamos sub-selects para contar o estoque real, igual fizemos no Acervo
         sql = """
-            SELECT l.id_livro AS pk, l.nome, l.isbn 
+            SELECT 
+                l.id_livro AS pk, 
+                l.nome, 
+                l.genero, 
+                l.status,
+                
+                -- Conta total de exemplares físicos
+                (SELECT COUNT(*) FROM Exemplar e WHERE e.id_livro = l.id_livro) as total_fisico,
+                
+                -- Conta quantos estão emprestados
+                (SELECT COUNT(*) FROM Emprestimo emp 
+                 JOIN Exemplar e ON emp.id_exemplar = e.id_exemplar 
+                 WHERE e.id_livro = l.id_livro AND emp.status = 'Em Andamento') as total_emprestado
+            
             FROM Livro l
         """
+        
         params = []
+        
         if query:
             sql += """
                 LEFT JOIN autor_livro al ON l.id_livro = al.id_livro 
@@ -76,8 +92,14 @@ def consultar_livros_view(request):
         cursor.execute(sql, params)
         livros = dictfetchall(cursor)
 
-        # Para cada livro, busca seus autores
+        # Processamento Python
         for livro in livros:
+            # 1. Calcula disponibilidade
+            total = livro['total_fisico'] or 0
+            emprestados = livro['total_emprestado'] or 0
+            livro['disponiveis'] = total - emprestados
+            
+            # 2. Busca Autores
             with connection.cursor() as autor_cursor:
                 autor_cursor.execute(
                     """

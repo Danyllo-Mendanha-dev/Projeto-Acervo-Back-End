@@ -13,48 +13,73 @@
         </a>
     </div>
     <div class="card-body">
-        <p>Utilize esta página para gerenciar as obras (títulos) do acervo.</p>
+        
         <form method="GET" action="{% url 'livros:livro_list' %}">
             <div class="input-group mb-4">
-                <input type="text" class="form-control" name="q" placeholder="Buscar por título, autor ou ISBN..." value="{{ request.GET.q }}">
+                <input type="text" class="form-control" name="q" placeholder="Buscar por título ou autor..." value="{{ request.GET.q }}">
                 <div class="input-group-append">
                     <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search"></i> Buscar</button>
                 </div>
             </div>
         </form>
+        
         <div class="table-responsive">
             <table class="table table-bordered table-hover">
                 <thead class="thead-light">
                     <tr>
                         <th>Título</th>
                         <th>Autores</th>
-                        <th>ISBN</th>
-                        <th class="text-center">Ações</th>
+                        <th>Gênero</th>
+                        <th class="text-center">Disponibilidade</th> <th class="text-center">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for livro in livros %}
                     <tr>
-                        <td>{{ livro.nome }}</td>
-                        <td>
-                            <!-- !!! CORREÇÃO AQUI !!! -->
-                            <!-- Iteramos sobre a lista 'autores_list' que a view envia -->
+                        <td class="align-middle font-weight-bold">{{ livro.nome }}</td>
+                        
+                        <td class="align-middle">
                             {% for autor in livro.autores_list %}
-                                <!-- Como cada 'autor' é um dicionário {'nome': ...}, acessamos 'autor.nome' -->
                                 {{ autor.nome }}{% if not forloop.last %}, {% endif %}
                             {% empty %}
-                                Nenhum autor
+                                <span class="text-muted small">N/A</span>
                             {% endfor %}
                         </td>
-                        <td>{{ livro.isbn }}</td>
-                        <td class="text-center">
-                            <a href="{% url 'livros:atualizar_livro' livro.pk %}" class="btn btn-info btn-sm" title="Editar"><i class="fas fa-edit"></i></a>
-                            <a href="{% url 'livros:excluir_livro' livro.pk %}" class="btn btn-danger btn-sm" title="Excluir"><i class="fas fa-trash-alt"></i></a>
+                        
+                        <td class="align-middle">{{ livro.genero|default:"-" }}</td>
+                        
+                        <td class="text-center align-middle">
+                            {% if livro.status == 'Inativo' %}
+                                <span class="badge badge-secondary">Arquivado / Inativo</span>
+                            {% else %}
+                                {% if livro.disponiveis > 0 %}
+                                    <span class="badge badge-success">Disponível</span>
+                                    <small class="d-block text-success font-weight-bold">
+                                        {{ livro.disponiveis }} de {{ livro.total_fisico }} no acervo
+                                    </small>
+                                {% else %}
+                                    {% if livro.total_fisico == 0 %}
+                                        <span class="badge badge-warning">Sem Exemplares</span>
+                                    {% else %}
+                                        <span class="badge badge-danger">Todos Emprestados</span>
+                                        <small class="d-block text-danger">0 de {{ livro.total_fisico }} disponíveis</small>
+                                    {% endif %}
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        
+                        <td class="text-center align-middle">
+                            <a href="{% url 'livros:atualizar_livro' livro.pk %}" class="btn btn-info btn-sm" title="Editar">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <a href="{% url 'livros:excluir_livro' livro.pk %}" class="btn btn-danger btn-sm" title="Excluir">
+                                <i class="fas fa-trash-alt"></i>
+                            </a>
                         </td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="4" class="text-center">Nenhuma obra encontrada.</td>
+                        <td colspan="5" class="text-center py-4 text-muted">Nenhuma obra encontrada.</td>
                     </tr>
                     {% endfor %}
                 </tbody>

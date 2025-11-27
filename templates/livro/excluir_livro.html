@@ -18,8 +18,8 @@
             <div class="card-footer text-center bg-white">
                 <form method="POST">
                     {% csrf_token %}
-                    <a href="{% url 'livros:livro_list' %}" class="btn btn-secondary"><i class="fas fa-times"></i> Cancelar</a>
-                    <button type="submit" class="btn btn-danger"><i class="fas fa-trash-alt"></i> Sim, Excluir</button>
+                    <a href="{% url 'livros:livro_list' %}" class="btn btn-secondary"><i class="fas fa-times"></i> Não</a>
+                    <button type="submit" class="btn btn-danger"><i class="fas fa-trash-alt"></i> Sim</button>
                 </form>
             </div>
         </div>

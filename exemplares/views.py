@@ -135,7 +135,7 @@ def atualizar_exemplar_view(request, pk):
 # DELETE (Excluir Exemplar)
 def excluir_exemplar_view(request, pk):
     with connection.cursor() as cursor:
-        # CORREÇÃO: Usando 'e.id_livro'
+        # Busca o patrimônio e o nome do livro associado
         cursor.execute(
             """
             SELECT e.numero_patrimonio, l.nome
@@ -153,7 +153,7 @@ def excluir_exemplar_view(request, pk):
     
     exemplar_data = {
         'numero_patrimonio': exemplar_row[0],
-        'livro_nome': exemplar_row[1]
+        'livro_nome': exemplar_row[1]  # <-- Aqui guardamos o nome do livro
     }
 
     if request.method == 'POST':
@@ -161,11 +161,15 @@ def excluir_exemplar_view(request, pk):
             with connection.cursor() as cursor:
                 cursor.execute("DELETE FROM Exemplar WHERE id_exemplar = %s", [pk])
             
+            # Mensagem de sucesso usa o patrimônio (pois foi ele que sumiu)
             messages.success(request, f'Exemplar "{exemplar_data["numero_patrimonio"]}" excluído com sucesso.')
             return redirect('exemplares:exemplar_list')
+            
         except IntegrityError:
-            messages.error(request, f'Não é possível excluir o exemplar "{exemplar_data["numero_patrimonio"]}", pois ele está associado a um empréstimo.')
+            # CORREÇÃO AQUI: Usamos exemplar_data["livro_nome"] na mensagem de erro
+            messages.error(request, f'Não é possível excluir este exemplar do livro "{exemplar_data["livro_nome"]}", pois ele está associado a um empréstimo.')
             return redirect('exemplares:exemplar_list')
+            
         except Exception as e:
             messages.error(request, f'Ocorreu um erro ao excluir: {e}')
             return redirect('exemplares:exemplar_list')

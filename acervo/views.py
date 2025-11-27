@@ -1,4 +1,4 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render
 from django.contrib import messages
 from django.db import connection
 
@@ -9,7 +9,7 @@ def dictfetchall(cursor):
     return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
 def _get_autores_para_livro(livro_id):
-    """Função auxiliar para buscar autores de um livro específico."""
+    """Busca autores de um livro específico."""
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -25,57 +25,71 @@ def _get_autores_para_livro(livro_id):
 
 # --- View Principal do Acervo ---
 
-def acervo_view(request):
+def acervo_view(request): # Note: Use o nome exato que está no seu urls.py
     """
-    Busca e exibe todos os livros com informações de disponibilidade 
-    e autores, com filtro de busca.
+    Busca e exibe todos os livros, calculando matematicamente a disponibilidade.
+    Fórmula: Disponíveis = Total de Exemplares - Empréstimos Ativos
     """
     query = request.GET.get('q', '')
     contexto = {'query': query}
     
     try:
         with connection.cursor() as cursor:
-            # 1. Query base para buscar livros e contagem de exemplares
-            # Esta query é complexa:
-            # - Conta o total de exemplares (total_exemplares)
-            # - Conta apenas os exemplares disponíveis
-            #   (disponiveis = que não estão em um empréstimo 'Em Andamento')
+            # 1. Query Otimizada com Sub-selects
+            # Isso evita erros de contagem quando o livro tem múltiplos autores
             sql = """
                 SELECT 
                     l.id_livro AS pk,
                     l.nome,
                     l.genero,
                     l.isbn,
-                    COUNT(DISTINCT e.id_exemplar) AS total_exemplares,
-                    COUNT(DISTINCT CASE 
-                        WHEN emp.status IS NULL THEN e.id_exemplar 
-                        ELSE NULL 
-                    END) AS exemplares_disponiveis
-                FROM Livro l
-                LEFT JOIN Exemplar e ON l.id_livro = e.id_livro
-                LEFT JOIN Emprestimo emp ON e.id_exemplar = emp.id_exemplar AND emp.status = 'Em Andamento'
-            """
+                    
+                    -- Sub-query 1: Conta quantos exemplares físicos existem
+                    (SELECT COUNT(*) 
+                     FROM Exemplar e 
+                     WHERE e.id_livro = l.id_livro) AS total_exemplares,
+
+                    -- Sub-query 2: Conta quantos estão emprestados AGORA
+                    (SELECT COUNT(*) 
+                     FROM Emprestimo emp 
+                     JOIN Exemplar e ON emp.id_exemplar = e.id_exemplar 
+                     WHERE e.id_livro = l.id_livro 
+                     AND emp.status = 'Em Andamento') AS qtd_emprestados
+
+                FROM Livro l 
+                """
             
             params = []
-            sql_where = ""
             
-            # 2. Adiciona JOINs e WHERE apenas se houver busca
+            # 2. Filtros de Busca
             if query:
                 sql += """
-                    LEFT JOIN autor_livro al ON l.id_livro = al.id_livro
+                    LEFT JOIN autor_livro al ON l.id_livro = al.id_livro 
                     LEFT JOIN Autor a ON al.id_autor = a.id_autor
+                    WHERE l.nome ILIKE %s OR a.nome ILIKE %s OR l.genero ILIKE %s
+                    GROUP BY l.id_livro
                 """
-                sql_where = " WHERE l.nome ILIKE %s OR a.nome ILIKE %s"
-                params.extend([f'%{query}%', f'%{query}%'])
+                params.extend([f'%{query}%', f'%{query}%', f'%{query}%'])
             
-            sql += sql_where
-            sql += " GROUP BY l.id_livro, l.nome, l.genero, l.isbn ORDER BY l.nome"
+            sql += " ORDER BY l.nome"
             
             cursor.execute(sql, params)
             livros = dictfetchall(cursor)
             
-            # 3. Para cada livro, busca sua lista de autores
+            # 3. Processamento no Python (Cálculo Real)
             for livro in livros:
+                # Garante que não venha None do banco
+                total = livro['total_exemplares'] or 0
+                emprestados = livro['qtd_emprestados'] or 0
+                
+                # A MÁGICA: Subtração simples e infalível
+                livro['exemplares_disponiveis'] = total - emprestados
+                
+                # Se der negativo por erro de banco, força zero
+                if livro['exemplares_disponiveis'] < 0:
+                    livro['exemplares_disponiveis'] = 0
+
+                # Busca a lista de autores para exibir no card
                 livro['autores_list'] = _get_autores_para_livro(livro['pk'])
             
             contexto['livros'] = livros

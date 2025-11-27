@@ -28,6 +28,7 @@
                     <tr>
                         <th>Nome</th>
                         <th>CPF</th>
+                        <th>Telefone</th>
                         <th>E-mail</th>
                         <th class="text-center">Ações</th>
                     </tr>
@@ -37,6 +38,7 @@
                     <tr>
                         <td>{{ leitor.nome }}</td>
                         <td>{{ leitor.cpf }}</td>
+                         <td>{{ leitor.telefone }}</td>
                         <td>{{ leitor.email }}</td>
                         <td class="text-center">
                             <a href="{% url 'leitores:atualizar_leitor' leitor.pk %}" class="btn btn-info btn-sm" title="Editar"><i class="fas fa-edit"></i></a>
