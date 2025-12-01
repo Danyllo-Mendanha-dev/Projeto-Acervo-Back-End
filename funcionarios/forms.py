@@ -7,7 +7,7 @@ class FuncionarioForm(forms.Form):
     email = forms.EmailField(label='Email', required=True, max_length=100, widget=forms.EmailInput(attrs={'class': 'form-control'}))
     
     # A senha continua não obrigatória na edição (tratado na view)
-    senha = forms.CharField(label='Senha', max_length=150, required=True, widget=forms.PasswordInput(attrs={'class': 'form-control'}))
+    senha = forms.CharField(label='Senha', max_length=150, required=False, widget=forms.PasswordInput(attrs={'class': 'form-control'}))
     
     telefone = forms.CharField(label='Telefone', max_length=20, required=True, widget=forms.TextInput(attrs={'class': 'form-control phone-mask'}))
     

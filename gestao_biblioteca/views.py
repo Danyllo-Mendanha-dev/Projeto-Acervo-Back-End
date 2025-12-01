@@ -4,27 +4,34 @@ from django.db import connection # Para executar SQL bruto
 # from django.contrib.auth.hashers import make_password
 
 def login_view(request):
+    # Verifica se o formulário foi submetido
     if request.method == 'POST':
+        # Captura os dados enviados pelo HTML
         email = request.POST.get('email')
-        # CORREÇÃO: Pega a senha em texto puro diretamente do formulário.
         senha = request.POST.get('senha')
 
-        # A consulta SQL agora compara texto puro com texto puro.
+        # Abre conexão para executar SQL nativo
         with connection.cursor() as cursor:
+            # Executa a query com parâmetros (previne SQL Injection)
             cursor.execute(
                 "SELECT id_funcionario, nome FROM Funcionario WHERE email = %s AND senha = %s", 
                 [email, senha]
             )
+            # Retorna o registro encontrado (ou None)
             funcionario = cursor.fetchone()
 
+        # Verifica se a credencial é válida
         if funcionario:
+            # Salva dados na sessão (mantém o login ativo)
             request.session['funcionario_logado_id'] = funcionario[0]
             request.session['funcionario_logado_nome'] = funcionario[1]
             return redirect('home')
         else:
+            # Login falhou: define mensagem de erro e recarrega
             messages.error(request, 'Email ou senha inválidos.')
             return redirect('login')
 
+    # Renderiza a página inicial de login (GET)
     return render(request, 'login.html')
 
 
@@ -61,7 +68,8 @@ def home_view(request):
         'total_exemplares': total_exemplares,
         'total_leitores': total_leitores,
     }
-    
+
+    # Renderiza a página inicial de dashboard
     return render(request, 'home.html', context)
 
 def logout_view(request):

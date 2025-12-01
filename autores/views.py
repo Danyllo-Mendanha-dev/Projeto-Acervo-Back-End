@@ -19,13 +19,12 @@ def cadastrar_autor_view(request):
             dados = form.cleaned_data
             try:
                 with connection.cursor() as cursor:
-                    # CORREÇÃO: Adicionamos 'biografia' ao INSERT
+                    # Executa INSERT SQL puro, incluindo o campo 'biografia' (texto longo)
                     cursor.execute(
                         """
                         INSERT INTO Autor (nome, nacionalidade, biografia)
                         VALUES (%s, %s, %s)
                         """,
-                        # CORREÇÃO: Adicionamos o dado da biografia
                         [dados['nome'], dados['nacionalidade'], dados['biografia']]
                     )
                 messages.success(request, 'Autor cadastrado com sucesso!')
@@ -42,10 +41,12 @@ def consultar_autores_view(request):
     query = request.GET.get('q', '')
     
     with connection.cursor() as cursor:
+        # Seleciona apenas os campos necessários para a listagem
         sql = "SELECT id_autor AS pk, nome, nacionalidade FROM Autor"
         params = []
         
         if query:
+            # Filtro ILIKE (Case-insensitive) para buscar autores pelo nome
             sql += " WHERE nome ILIKE %s"
             params.append(f'%{query}%')
         else:
@@ -53,41 +54,40 @@ def consultar_autores_view(request):
         
         cursor.execute(sql, params)
         
+        # Helper 'dictfetchall' transforma as tuplas do banco em dicionários
         autores = dictfetchall(cursor)
 
     return render(request, 'autor/consultar_autor.html', {'autores': autores})
 
 # UPDATE (Atualizar Autor)
 def atualizar_autor_view(request, pk):
+    # 1. Recupera os dados atuais (incluindo biografia) para preencher o form
     with connection.cursor() as cursor:
-        # CORREÇÃO: Adicionamos 'biografia' ao SELECT
         cursor.execute("SELECT id_autor, nome, nacionalidade, biografia FROM Autor WHERE id_autor = %s", [pk])
         row = cursor.fetchone()
         if not row:
             messages.error(request, 'Autor não encontrado.')
             return redirect('autores:autor_list')
         
-        # CORREÇÃO: Adicionamos 'biografia' ao dicionário
+        # Mapeamento Tupla -> Dicionário
         autor_data = {
-            'pk': row[0],
-            'nome': row[1],
-            'nacionalidade': row[2],
-            'biografia': row[3]  # Índice 3, conforme a imagem do seu banco
+            'pk': row[0], 'nome': row[1], 
+            'nacionalidade': row[2], 'biografia': row[3]
         }
 
+    # 2. Processa a atualização
     if request.method == 'POST':
         form = AutorForm(request.POST)
         if form.is_valid():
             dados = form.cleaned_data
             try:
                 with connection.cursor() as cursor:
-                    # CORREÇÃO: Adicionamos 'biografia' ao UPDATE
+                    # Executa UPDATE em todos os campos mapeados
                     sql_query = """
                         UPDATE Autor
                         SET nome=%s, nacionalidade=%s, biografia=%s
                         WHERE id_autor = %s
                     """
-                    # CORREÇÃO: Adicionamos o dado da biografia
                     params = [dados['nome'], dados['nacionalidade'], dados['biografia'], pk]
                     cursor.execute(sql_query, params)
                 messages.success(request, 'Autor atualizado com sucesso!')
@@ -95,17 +95,15 @@ def atualizar_autor_view(request, pk):
             except Exception as e:
                 messages.error(request, f'Ocorreu um erro ao atualizar: {e}')
     else:
+        # Inicializa o form com os dados vindos do banco
         form = AutorForm(initial=autor_data)
 
-    context = {
-        'form': form,
-        'autor': autor_data,
-        'editando': True
-    }
+    context = {'form': form, 'autor': autor_data, 'editando': True}
     return render(request, 'autor/cadastrar_autor.html', context)
 
 # DELETE (Excluir Autor)
 def excluir_autor_view(request, pk):
+    # Verifica existência para confirmação visual
     with connection.cursor() as cursor:
         cursor.execute("SELECT nome FROM Autor WHERE id_autor = %s", [pk])
         autor = cursor.fetchone()
@@ -117,12 +115,16 @@ def excluir_autor_view(request, pk):
     if request.method == 'POST':
         try:
             with connection.cursor() as cursor:
+                # Tenta exclusão física
                 cursor.execute("DELETE FROM Autor WHERE id_autor = %s", [pk])
             messages.success(request, f'Autor "{autor[0]}" excluído com sucesso.')
             return redirect('autores:autor_list')
+        
         except IntegrityError:
+            # Captura erro de Foreign Key (Autor vinculado a Livros)
             messages.error(request, f'Não é possível excluir o autor "{autor[0]}", pois ele está associado a um ou mais livros.')
             return redirect('autores:autor_list')
+        
         except Exception as e:
             messages.error(request, f'Ocorreu um erro ao excluir: {e}')
             return redirect('autores:autor_list')

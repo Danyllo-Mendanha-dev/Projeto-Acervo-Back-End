@@ -19,7 +19,7 @@ def cadastrar_livro_view(request):
             dados = form.cleaned_data
             try:
                 with connection.cursor() as cursor:
-                    # 1. Insere o livro na tabela principal e obtém o ID
+                    # 1. Insere o livro
                     cursor.execute(
                         """
                         INSERT INTO Livro (nome, genero, isbn, qtde_exemplares, status)
@@ -30,10 +30,9 @@ def cadastrar_livro_view(request):
                     )
                     id_livro_novo = cursor.fetchone()[0]
                     
-                    # 2. Insere as associações na tabela autor_livro com os nomes de coluna corretos
+                    # 2. Insere autores (loop simples, sem join)
                     ids_autores = dados.get('autores', [])
-                    for id_autor_loop in ids_autores: # Renomeado para evitar conflito de nome
-                        # !!! CORREÇÃO AQUI nos nomes das colunas !!!
+                    for id_autor_loop in ids_autores:
                         cursor.execute(
                             """
                             INSERT INTO autor_livro (id_livro, id_autor) 
@@ -51,68 +50,71 @@ def cadastrar_livro_view(request):
 
     return render(request, 'livro/cadastrar_livro.html', {'form': form, 'editando': False})
 
+
 # READ (Consultar Livros)
 def consultar_livros_view(request):
     query = request.GET.get('q', '')
     
     with connection.cursor() as cursor:
-        # AQUI ESTÁ A MUDANÇA:
-        # Usamos sub-selects para contar o estoque real, igual fizemos no Acervo
-        sql = """
-            SELECT 
-                l.id_livro AS pk, 
-                l.nome, 
-                l.genero, 
-                l.status,
-                
-                -- Conta total de exemplares físicos
-                (SELECT COUNT(*) FROM Exemplar e WHERE e.id_livro = l.id_livro) as total_fisico,
-                
-                -- Conta quantos estão emprestados
-                (SELECT COUNT(*) FROM Emprestimo emp 
-                 JOIN Exemplar e ON emp.id_exemplar = e.id_exemplar 
-                 WHERE e.id_livro = l.id_livro AND emp.status = 'Em Andamento') as total_emprestado
-            
-            FROM Livro l
-        """
-        
+        # 1. Busca os livros (Tabela principal apenas)
+        sql = "SELECT id_livro AS pk, nome, isbn, genero, status FROM Livro"
         params = []
         
         if query:
-            sql += """
-                LEFT JOIN autor_livro al ON l.id_livro = al.id_livro 
-                LEFT JOIN Autor a ON al.id_autor = a.id_autor
-                WHERE l.nome ILIKE %s OR l.isbn ILIKE %s OR a.nome ILIKE %s
-                GROUP BY l.id_livro
-            """
-            params.extend([f'%{query}%', f'%{query}%', f'%{query}%'])
-        else:
-            sql += " ORDER BY l.nome"
-            
+            # Filtro simples na tabela Livro
+            sql += " WHERE nome ILIKE %s OR isbn ILIKE %s"
+            params.extend([f'%{query}%', f'%{query}%'])
+        
+        sql += " ORDER BY nome"
+        
         cursor.execute(sql, params)
         livros = dictfetchall(cursor)
 
-        # Processamento Python
+        # 2. Loop para buscar dados relacionados (O "JOIN manual" via Python)
         for livro in livros:
-            # 1. Calcula disponibilidade
-            total = livro['total_fisico'] or 0
-            emprestados = livro['total_emprestado'] or 0
-            livro['disponiveis'] = total - emprestados
+            livro_id = livro['pk']
+
+            # A) Conta total de exemplares físicos
+            cursor.execute("SELECT COUNT(*) FROM Exemplar WHERE id_livro = %s", [livro_id])
+            total_fisico = cursor.fetchone()[0]
+            livro['total_fisico'] = total_fisico
+
+            # B) Conta quantos estão emprestados 
+            # (Precisamos saber quais exemplares deste livro estão em emprestimos ativos)
+            # Fazemos sub-query ou filtro direto
+            cursor.execute(
+                """
+                SELECT COUNT(*) 
+                FROM Emprestimo 
+                WHERE status = 'Em Andamento' 
+                AND id_exemplar IN (SELECT id_exemplar FROM Exemplar WHERE id_livro = %s)
+                """, 
+                [livro_id]
+            )
+            total_emprestado = cursor.fetchone()[0]
             
-            # 2. Busca Autores
-            with connection.cursor() as autor_cursor:
-                autor_cursor.execute(
-                    """
-                    SELECT a.nome 
-                    FROM Autor a
-                    JOIN autor_livro al ON a.id_autor = al.id_autor 
-                    WHERE al.id_livro = %s
-                    """,
-                    [livro['pk']]
-                )
-                livro['autores_list'] = dictfetchall(autor_cursor)
+            # C) Calcula disponibilidade
+            livro['disponiveis'] = total_fisico - total_emprestado
+
+            # D) Busca os Autores (Sem JOIN)
+            # Primeiro: pega os IDs dos autores na tabela de ligação
+            cursor.execute("SELECT id_autor FROM autor_livro WHERE id_livro = %s", [livro_id])
+            rows_autores = cursor.fetchall()
+            ids_autores = [r[0] for r in rows_autores]
+            
+            autores_list = []
+            if ids_autores:
+                # Segundo: para cada ID, busca o nome na tabela Autor
+                # (Poderíamos usar IN, mas um loop simples também resolve se quiser evitar SQL complexo)
+                # Vamos usar IN para ser um pouco mais otimizado, mas sem JOIN
+                placeholders = ','.join(['%s'] * len(ids_autores))
+                cursor.execute(f"SELECT nome FROM Autor WHERE id_autor IN ({placeholders})", ids_autores)
+                autores_list = dictfetchall(cursor)
+            
+            livro['autores_list'] = autores_list
 
     return render(request, 'livro/consultar_livro.html', {'livros': livros})
+
 
 # UPDATE (Atualizar Livro)
 def atualizar_livro_view(request, pk):
@@ -129,8 +131,7 @@ def atualizar_livro_view(request, pk):
             'isbn': livro_row[3], 'qtde_exemplares': livro_row[4], 'status': livro_row[5]
         }
         
-        # 2. Busca os IDs dos autores já selecionados na tabela autor_livro
-         # !!! CORREÇÃO AQUI no nome da coluna !!!
+        # 2. Busca os IDs dos autores (Select simples na tabela de ligação)
         cursor.execute("SELECT id_autor FROM autor_livro WHERE id_livro = %s", [pk])
         livro_data['autores'] = [row[0] for row in cursor.fetchall()]
 
@@ -141,7 +142,7 @@ def atualizar_livro_view(request, pk):
             dados = form.cleaned_data
             try:
                 with connection.cursor() as cursor:
-                    # 1. Atualiza a tabela principal 'Livro'
+                    # 1. Atualiza Livro
                     cursor.execute(
                         """
                         UPDATE Livro
@@ -151,19 +152,13 @@ def atualizar_livro_view(request, pk):
                         [dados['nome'], dados['genero'], dados['isbn'], dados['qtde_exemplares'], dados['status'], pk]
                     )
                     
-                    # 2. Remove todas as associações de autores antigas da tabela autor_livro
-                     # !!! CORREÇÃO AQUI no nome da coluna !!!
+                    # 2. Atualiza Autores (Remove tudo e insere de novo)
                     cursor.execute("DELETE FROM autor_livro WHERE id_livro = %s", [pk])
                     
-                    # 3. Re-insere as novas associações de autores na tabela autor_livro
                     ids_autores = dados.get('autores', [])
-                    for id_autor_loop in ids_autores: # Renomeado para evitar conflito
-                         # !!! CORREÇÃO AQUI nos nomes das colunas !!!
+                    for id_autor_loop in ids_autores:
                         cursor.execute(
-                            """
-                            INSERT INTO autor_livro (id_livro, id_autor)
-                            VALUES (%s, %s)
-                            """,
+                            "INSERT INTO autor_livro (id_livro, id_autor) VALUES (%s, %s)",
                             [pk, id_autor_loop]
                         )
                         
@@ -181,8 +176,10 @@ def atualizar_livro_view(request, pk):
     }
     return render(request, 'livro/cadastrar_livro.html', context)
 
+
 # DELETE (Excluir Livro)
 def excluir_livro_view(request, pk):
+    # 1. Busca prévia para confirmação visual
     with connection.cursor() as cursor:
         cursor.execute("SELECT nome FROM Livro WHERE id_livro = %s", [pk])
         livro = cursor.fetchone()
@@ -194,17 +191,25 @@ def excluir_livro_view(request, pk):
     if request.method == 'POST':
         try:
             with connection.cursor() as cursor:
-                # Deletamos as associações primeiro da tabela autor_livro
-                 # !!! CORREÇÃO AQUI no nome da coluna !!!
+                # 2. LIMPEZA MANUAL DA TABELA ASSOCIATIVA (N:M)
+                # Como Livro tem relação N:M com Autor, precisamos deletar 
+                # o vínculo na tabela 'autor_livro' ANTES de deletar o livro.
                 cursor.execute("DELETE FROM autor_livro WHERE id_livro = %s", [pk])
-                # Depois o livro
+                
+                # 3. EXCLUSÃO DA ENTIDADE PRINCIPAL
+                # Agora que a tabela de ligação está limpa, podemos apagar o livro.
                 cursor.execute("DELETE FROM Livro WHERE id_livro = %s", [pk])
             
             messages.success(request, f'Obra "{livro[0]}" excluída com sucesso.')
             return redirect('livros:livro_list')
+            
         except IntegrityError: 
+            # 4. VALIDAÇÃO DE INTEGRIDADE (1:N)
+            # Se existirem exemplares (cópias físicas) na tabela Exemplar,
+            # o banco impede o delete do Livro (Foreign Key) e caímos aqui.
             messages.error(request, f'Não é possível excluir a obra "{livro[0]}", pois ela possui exemplares associados.')
             return redirect('livros:livro_list')
+            
         except Exception as e:
             messages.error(request, f'Ocorreu um erro ao excluir: {e}')
             return redirect('livros:livro_list')

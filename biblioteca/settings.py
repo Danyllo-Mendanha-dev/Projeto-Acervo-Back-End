@@ -88,7 +88,7 @@ WSGI_APPLICATION = 'biblioteca.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'SIGA',  # O nome que você criou no Passo 2
+        'NAME': 'SIGA',  # O nome do Banco de Dados
         'USER': 'admin',         # O usuário que você criou
         'PASSWORD': 'admin',       # A senha que você criou
         'HOST': 'localhost',           # Ou o endereço do seu servidor de banco de dados

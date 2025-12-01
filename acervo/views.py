@@ -9,15 +9,16 @@ def dictfetchall(cursor):
     return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
 def _get_autores_para_livro(livro_id):
-    """Busca autores de um livro específico."""
+    """Busca autores de um livro específico SEM JOIN."""
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT a.nome 
-            FROM Autor a
-            JOIN autor_livro al ON a.id_autor = al.id_autor
-            WHERE al.id_livro = %s
-            ORDER BY a.nome
+            SELECT nome 
+            FROM Autor 
+            WHERE id_autor IN (
+                SELECT id_autor FROM autor_livro WHERE id_livro = %s
+            )
+            ORDER BY nome
             """,
             [livro_id]
         )
@@ -25,72 +26,70 @@ def _get_autores_para_livro(livro_id):
 
 # --- View Principal do Acervo ---
 
-def acervo_view(request): # Note: Use o nome exato que está no seu urls.py
+def acervo_view(request):
     """
-    Busca e exibe todos os livros, calculando matematicamente a disponibilidade.
-    Fórmula: Disponíveis = Total de Exemplares - Empréstimos Ativos
+    Busca e exibe todos os livros com disponibilidade calculada.
+    SEM JOIN (usando sub-queries e Python).
     """
     query = request.GET.get('q', '')
     contexto = {'query': query}
     
     try:
         with connection.cursor() as cursor:
-            # 1. Query Otimizada com Sub-selects
-            # Isso evita erros de contagem quando o livro tem múltiplos autores
-            sql = """
-                SELECT 
-                    l.id_livro AS pk,
-                    l.nome,
-                    l.genero,
-                    l.isbn,
-                    
-                    -- Sub-query 1: Conta quantos exemplares físicos existem
-                    (SELECT COUNT(*) 
-                     FROM Exemplar e 
-                     WHERE e.id_livro = l.id_livro) AS total_exemplares,
-
-                    -- Sub-query 2: Conta quantos estão emprestados AGORA
-                    (SELECT COUNT(*) 
-                     FROM Emprestimo emp 
-                     JOIN Exemplar e ON emp.id_exemplar = e.id_exemplar 
-                     WHERE e.id_livro = l.id_livro 
-                     AND emp.status = 'Em Andamento') AS qtd_emprestados
-
-                FROM Livro l 
-                """
-            
+            # 1. Busca os Livros (Tabela Principal)
+            sql = "SELECT id_livro AS pk, nome, genero, isbn FROM Livro"
             params = []
             
-            # 2. Filtros de Busca
             if query:
+                # Filtro de busca SEM JOIN
                 sql += """
-                    LEFT JOIN autor_livro al ON l.id_livro = al.id_livro 
-                    LEFT JOIN Autor a ON al.id_autor = a.id_autor
-                    WHERE l.nome ILIKE %s OR a.nome ILIKE %s OR l.genero ILIKE %s
-                    GROUP BY l.id_livro
+                    WHERE nome ILIKE %s 
+                    OR genero ILIKE %s
+                    OR id_livro IN (
+                        SELECT id_livro FROM autor_livro 
+                        WHERE id_autor IN (SELECT id_autor FROM Autor WHERE nome ILIKE %s)
+                    )
                 """
                 params.extend([f'%{query}%', f'%{query}%', f'%{query}%'])
             
-            sql += " ORDER BY l.nome"
+            sql += " ORDER BY nome"
             
             cursor.execute(sql, params)
             livros = dictfetchall(cursor)
             
-            # 3. Processamento no Python (Cálculo Real)
+            # 2. Processamento (Enriquecimento dos dados)
             for livro in livros:
-                # Garante que não venha None do banco
-                total = livro['total_exemplares'] or 0
-                emprestados = livro['qtd_emprestados'] or 0
+                livro_id = livro['pk']
+
+                # A) Conta TOTAL de exemplares físicos
+                cursor.execute("SELECT COUNT(*) FROM Exemplar WHERE id_livro = %s", [livro_id])
+                total_exemplares = cursor.fetchone()[0]
+                livro['total_exemplares'] = total_exemplares
+
+                # B) Conta quantos estão EMPRESTADOS (Em Andamento)
+                # Sub-query: Conta na tabela Emprestimo onde o exemplar pertence a este livro
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) 
+                    FROM Emprestimo 
+                    WHERE status = 'Em Andamento'
+                    AND id_exemplar IN (SELECT id_exemplar FROM Exemplar WHERE id_livro = %s)
+                    """, 
+                    [livro_id]
+                )
+                qtd_emprestados = cursor.fetchone()[0]
+                livro['qtd_emprestados'] = qtd_emprestados
                 
-                # A MÁGICA: Subtração simples e infalível
-                livro['exemplares_disponiveis'] = total - emprestados
+                # C) Cálculo Matemático da Disponibilidade
+                # Se tenho 5 livros e 2 estão emprestados -> 3 disponíveis
+                livro['exemplares_disponiveis'] = total_exemplares - qtd_emprestados
                 
-                # Se der negativo por erro de banco, força zero
+                # Força zero se der negativo (segurança)
                 if livro['exemplares_disponiveis'] < 0:
                     livro['exemplares_disponiveis'] = 0
 
-                # Busca a lista de autores para exibir no card
-                livro['autores_list'] = _get_autores_para_livro(livro['pk'])
+                # D) Busca lista de autores
+                livro['autores_list'] = _get_autores_para_livro(livro_id)
             
             contexto['livros'] = livros
 

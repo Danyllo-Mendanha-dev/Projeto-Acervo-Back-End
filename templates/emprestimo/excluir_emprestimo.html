@@ -29,10 +29,10 @@
                 <form method="POST">
                     {% csrf_token %}
                     <a href="{% url 'emprestimos:emprestimo_list' %}" class="btn btn-secondary">
-                        <i class="fas fa-times"></i> Cancelar
+                        <i class="fas fa-times"></i> Não
                     </a>
                     <button type="submit" class="btn btn-danger">
-                        <i class="fas fa-trash-alt"></i> Sim, Excluir Registro
+                        <i class="fas fa-trash-alt"></i> Sim
                     </button>
                 </form>
             </div>

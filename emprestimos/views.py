@@ -1,8 +1,6 @@
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.db import connection, IntegrityError
-# Certifique-se de que o import do EmprestimoForm está correto
-# (deve ser 'from .forms import EmprestimoForm')
 from .forms import DevolucaoForm, EmprestimoForm, get_emprestimos_ativos_choices 
 from datetime import date, timedelta
 
@@ -13,26 +11,56 @@ def dictfetchall(cursor):
     return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
 def _get_emprestimo_detalhes(pk):
-    """Busca detalhes de um empréstimo para as páginas de confirmação."""
+    """
+    Busca detalhes de um empréstimo SEM JOIN.
+    Faz consultas sequenciais para montar o objeto completo.
+    """
     with connection.cursor() as cursor:
+        # 1. Busca dados do Empréstimo
         cursor.execute(
             """
-            SELECT 
-                l.nome AS livro_nome,
-                e.numero_patrimonio,
-                le.nome AS leitor_nome,
-                emp.dt_emprestimo,          -- ADICIONADO
-                emp.dt_prevista_devolucao   -- ADICIONADO
-            FROM Emprestimo emp
-            JOIN Exemplar e ON emp.id_exemplar = e.id_exemplar
-            JOIN Livro l ON e.id_livro = l.id_livro
-            JOIN Leitor le ON emp.id_leitor = le.id_leitor
-            WHERE emp.id_emprestimo = %s
+            SELECT id_emprestimo, id_exemplar, id_leitor, dt_emprestimo, dt_prevista_devolucao
+            FROM Emprestimo
+            WHERE id_emprestimo = %s
             """,
             [pk]
         )
-        result = dictfetchall(cursor)
-        return result[0] if result else None
+        emprestimo_row = cursor.fetchone()
+        
+        if not emprestimo_row:
+            return None
+
+        # Dados base
+        emprestimo = {
+            'id_emprestimo': emprestimo_row[0],
+            'id_exemplar': emprestimo_row[1],
+            'id_leitor': emprestimo_row[2],
+            'dt_emprestimo': emprestimo_row[3],
+            'dt_prevista_devolucao': emprestimo_row[4],
+        }
+
+        # 2. Busca dados do Leitor (usando id_leitor)
+        cursor.execute("SELECT nome FROM Leitor WHERE id_leitor = %s", [emprestimo['id_leitor']])
+        leitor_row = cursor.fetchone()
+        emprestimo['leitor_nome'] = leitor_row[0] if leitor_row else "Leitor Desconhecido"
+
+        # 3. Busca dados do Exemplar (usando id_exemplar) para pegar o patrimônio e id_livro
+        cursor.execute("SELECT numero_patrimonio, id_livro FROM Exemplar WHERE id_exemplar = %s", [emprestimo['id_exemplar']])
+        exemplar_row = cursor.fetchone()
+        
+        if exemplar_row:
+            emprestimo['numero_patrimonio'] = exemplar_row[0]
+            id_livro = exemplar_row[1]
+            
+            # 4. Busca dados do Livro (usando id_livro obtido do exemplar)
+            cursor.execute("SELECT nome FROM Livro WHERE id_livro = %s", [id_livro])
+            livro_row = cursor.fetchone()
+            emprestimo['livro_nome'] = livro_row[0] if livro_row else "Livro Desconhecido"
+        else:
+            emprestimo['numero_patrimonio'] = "N/A"
+            emprestimo['livro_nome'] = "Desconhecido"
+
+        return emprestimo
 
 # --- CRUD DE EMPRÉSTIMO ---
 
@@ -42,18 +70,19 @@ def cadastrar_emprestimo_view(request):
         form = EmprestimoForm(request.POST)
         if form.is_valid():
             dados = form.cleaned_data
-            id_funcionario_logado = request.session.get('funcionario_logado_id')
             
+            # Auditoria: Captura qual funcionário está realizando a operação
+            id_funcionario_logado = request.session.get('funcionario_logado_id')
             if not id_funcionario_logado:
-                messages.error(request, 'Sua sessão expirou. Por favor, faça login novamente.')
                 return redirect('login')
 
             try:
                 with connection.cursor() as cursor:
+                    # Regra de Negócio: Definição de prazos via Python
                     data_hoje = date.today()
-                    data_prevista = data_hoje + timedelta(days=14) # Regra: 14 dias
+                    data_prevista = data_hoje + timedelta(days=14) 
                     
-                    # CORREÇÃO: Usando os nomes de coluna corretos do seu banco
+                    # Persistência com Status Inicial
                     cursor.execute(
                         """
                         INSERT INTO Emprestimo 
@@ -62,131 +91,106 @@ def cadastrar_emprestimo_view(request):
                         """,
                         [dados['exemplar'], dados['leitor'], id_funcionario_logado, data_hoje, data_prevista]
                     )
-                    
-                    # Como a tabela Exemplar não tem status, não precisamos atualizá-la.
-                    # O exemplar fica indisponível automaticamente pela lógica no forms.py.
-                    
                 messages.success(request, 'Empréstimo registrado com sucesso!')
                 return redirect('emprestimos:emprestimo_list')
             except Exception as e:
-                messages.error(request, f'Ocorreu um erro ao cadastrar: {e}')
+                messages.error(request, f'Erro: {e}')
     else:
         form = EmprestimoForm()
-
     return render(request, 'emprestimo/cadastrar_emprestimo.html', {'form': form})
 
-# READ (Consultar Empréstimos)
+# READ (Consultar Empréstimos - SEM JOIN)
 def consultar_emprestimos_view(request):
-    # Captura o termo de busca, se houver
     query = request.GET.get('q', '') 
-    
-    contexto = {
-        'query': query 
-    }
     
     try:
         with connection.cursor() as cursor:
-            # SELECT Focado apenas em dados ativos
-            sql_base = """
-                SELECT 
-                    emp.id_emprestimo AS pk,
-                    emp.dt_emprestimo,
-                    emp.dt_prevista_devolucao,
-                    emp.status,
-                    l.nome AS livro_nome,
-                    e.numero_patrimonio,
-                    le.nome AS leitor_nome
-                FROM Emprestimo emp
-                JOIN Exemplar e ON emp.id_exemplar = e.id_exemplar
-                JOIN Livro l ON e.id_livro = l.id_livro
-                JOIN Leitor le ON emp.id_leitor = le.id_leitor
-                WHERE emp.status = 'Em Andamento'
-            """
-            
+            # 1. Query Principal: Traz apenas dados da tabela Empréstimo
+            sql = "SELECT id_emprestimo AS pk, dt_prevista_devolucao, status, id_exemplar, id_leitor FROM Emprestimo WHERE status = 'Em Andamento'"
             params = [] 
             
-            # Se houver busca, adiciona os filtros
             if query:
-                sql_base += " AND (l.nome ILIKE %s OR le.nome ILIKE %s OR e.numero_patrimonio::text ILIKE %s)"
+                # 2. Filtragem Complexa via Subqueries (WHERE IN)
+                # Substitui JOINs por verificações de existência nas tabelas relacionadas
+                sql += """
+                    AND (
+                        id_leitor IN (SELECT id_leitor FROM Leitor WHERE nome ILIKE %s)
+                        OR 
+                        id_exemplar IN (SELECT id_exemplar FROM Exemplar WHERE numero_patrimonio::text ILIKE %s)
+                        OR
+                        id_exemplar IN (SELECT id_exemplar FROM Exemplar WHERE id_livro IN (SELECT id_livro FROM Livro WHERE nome ILIKE %s))
+                    )
+                """
                 params.extend([f'%{query}%', f'%{query}%', f'%{query}%'])
             
-            # Ordenação: Primeiro os que vencem mais cedo (ou já venceram)
-            cursor.execute(sql_base + " ORDER BY emp.dt_prevista_devolucao ASC", params)
+            cursor.execute(sql, params)
             emprestimos = dictfetchall(cursor)
 
-            # Lógica Python para marcar visualmente os atrasados
+            # 3. Hidratação Manual de Dados (Loop N+1)
+            # Para cada empréstimo, fazemos novas consultas para buscar nomes.
             hoje = date.today()
             for emp in emprestimos:
-                # Se a data prevista for menor que hoje, está atrasado
-                if emp['dt_prevista_devolucao'] < hoje:
-                    emp['is_atrasado'] = True
-                    emp['dias_atraso'] = (hoje - emp['dt_prevista_devolucao']).days
-                else:
-                    emp['is_atrasado'] = False
-            
-            contexto['emprestimos'] = emprestimos
-            contexto['total_ativos'] = len(emprestimos)
+                # Busca Leitor
+                cursor.execute("SELECT nome FROM Leitor WHERE id_leitor = %s", [emp['id_leitor']])
+                emp['leitor_nome'] = cursor.fetchone()[0]
 
-        return render(request, 'emprestimo/consultar_emprestimos.html', contexto)
-    
+                # Busca Exemplar e Livro (Sequencial)
+                cursor.execute("SELECT numero_patrimonio, id_livro FROM Exemplar WHERE id_exemplar = %s", [emp['id_exemplar']])
+                ex_row = cursor.fetchone()
+                emp['numero_patrimonio'] = ex_row[0]
+                
+                cursor.execute("SELECT nome FROM Livro WHERE id_livro = %s", [ex_row[1]])
+                emp['livro_nome'] = cursor.fetchone()[0]
+
+                # Lógica de Interface: Verifica atraso no Python para destacar no HTML
+                emp['is_atrasado'] = emp['dt_prevista_devolucao'] < hoje
+                emp['dias_atraso'] = (hoje - emp['dt_prevista_devolucao']).days if emp['is_atrasado'] else 0
+
+        return render(request, 'emprestimo/consultar_emprestimos.html', {'emprestimos': emprestimos})
     except Exception as e:
-        messages.error(request, f"Erro ao listar empréstimos: {e}")
         return redirect('home')
 
 # UPDATE (Registrar Devolução)
 def registrar_devolucao_view(request):
     contexto = {}
-    
-    # 1. Sempre carrega o dropdown para o usuário poder selecionar/trocar
-    # Usamos a função que movemos para o forms.py para manter organizado
     contexto['lista_emprestimos_ativos'] = get_emprestimos_ativos_choices()
 
-    # Tenta pegar o ID tanto da URL (GET - seleção inicial) quanto do Form (POST - confirmação)
     emprestimo_id = request.GET.get('emprestimo_id') or request.POST.get('emprestimo_id')
 
-    # SE NÃO TIVER ID: É o acesso inicial à página, mostra só o dropdown
     if not emprestimo_id:
         return render(request, 'emprestimo/devolver_emprestimo.html', contexto)
 
-    # SE TIVER ID: Buscamos os detalhes para processar
+    # Helper function busca todos os dados necessários
     emprestimo = _get_emprestimo_detalhes(emprestimo_id)
     
     if not emprestimo:
         messages.error(request, 'Empréstimo não encontrado ou já devolvido.')
-        return redirect('emprestimos:registrar_devolucao') # Reseta a tela
+        return redirect('emprestimos:registrar_devolucao')
 
-    # Passa os dados para o template exibir (Read-Only)
     contexto['emprestimo'] = emprestimo
     contexto['emprestimo_id_selecionado'] = int(emprestimo_id)
 
-    # --- CÁLCULO DE ATRASO ---
+    # Cálculo de Multa (Regra de Negócio)
+    # A lógica de "quanto cobrar" fica no código, não no banco.
     data_prevista = emprestimo['dt_prevista_devolucao']
     hoje = date.today()
-    
-    # Diferença em dias
     dias_atraso = (hoje - data_prevista).days
-    
-    # Define a flag booleana para controlar a UI e o Form
     is_late = dias_atraso > 0
     
     contexto['is_late'] = is_late
     contexto['dias_atraso'] = dias_atraso if is_late else 0
 
-    # --- PROCESSAMENTO DO POST (Confirmar Devolução) ---
     if request.method == 'POST':
-        # Instancia o form passando 'is_late'. 
-        # Se is_late=True, o form torna a multa obrigatória.
-        # Se is_late=False, o form ignora a multa.
         form = DevolucaoForm(request.POST, is_late=is_late)
 
         if form.is_valid():
             dados = form.cleaned_data
-            
-            # Se o campo estava oculto (não atrasado), multa vem como None ou 0
             valor_multa = dados.get('multa') or 0.00 
             texto_ocorrencia = dados.get('ocorrencia') or ''
 
             try:
+                # Transação de Encerramento
+                # Atualiza Status, Data Real, Multa e Ocorrência em um único comando
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
@@ -202,24 +206,15 @@ def registrar_devolucao_view(request):
                 
                 messages.success(request, f"Devolução do livro '{emprestimo['livro_nome']}' registrada com sucesso!")
                 return redirect('emprestimos:emprestimo_list')
-            
             except Exception as e:
                 messages.error(request, f'Erro no banco de dados: {e}')
         else:
             messages.warning(request, 'Verifique os erros no formulário abaixo.')
-    
-    # --- PREPARAÇÃO DO GET (Exibir Formulário) ---
     else:
-        # Cria os dados iniciais
         initial_data = {}
-        
         if is_late:
-            # LÓGICA DA MULTA: R$ 1,00 por dia de atraso (Exemplo)
-            # Você pode alterar esse multiplicador conforme a regra da biblioteca
             multa_calculada = dias_atraso * 1.00
             initial_data['multa'] = f"{multa_calculada:.2f}"
-        
-        # Instancia o form com os valores iniciais e a flag de atraso
         form = DevolucaoForm(initial=initial_data, is_late=is_late)
 
     contexto['form'] = form
@@ -227,6 +222,7 @@ def registrar_devolucao_view(request):
 
 # DELETE (Excluir Registro de Empréstimo)
 def excluir_emprestimo_view(request, pk):
+    # Busca detalhes para mostrar na mensagem de confirmação/erro (usando helper sem JOIN)
     try:
         emprestimo_detalhes = _get_emprestimo_detalhes(pk)
     except Exception:
@@ -236,7 +232,6 @@ def excluir_emprestimo_view(request, pk):
     if request.method == 'POST':
         try:
             with connection.cursor() as cursor:
-                # O exemplar ficará disponível automaticamente após a exclusão
                 cursor.execute("DELETE FROM Emprestimo WHERE id_emprestimo = %s", [pk])
             
             messages.success(request, 'Registro de empréstimo excluído com sucesso.')

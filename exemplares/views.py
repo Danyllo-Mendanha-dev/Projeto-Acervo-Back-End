@@ -19,7 +19,7 @@ def cadastrar_exemplar_view(request):
             dados = form.cleaned_data
             try:
                 with connection.cursor() as cursor:
-                    # CORREÇÃO: Usando 'id_livro' e os campos novos. Removido 'status'.
+                    # INSERT Simples: Grava a FK (id_livro) diretamente na tabela Exemplar
                     cursor.execute(
                         """
                         INSERT INTO Exemplar (id_livro, numero_patrimonio, localizacao, dt_aquisicao, dt_publicacao, edicao)
@@ -42,27 +42,36 @@ def consultar_exemplares_view(request):
     
     try:
         with connection.cursor() as cursor:
-            # CORREÇÃO: Removido 'e.status' do SELECT. Usando 'e.id_livro'.
+            # 1. Busca Inicial (Apenas dados do Exemplar)
+            # Note que não trazemos o nome do livro aqui, apenas o ID.
             sql = """
-                SELECT 
-                    e.id_exemplar AS pk,
-                    e.numero_patrimonio,
-                    e.localizacao,
-                    l.nome AS livro_nome 
+                SELECT e.id_exemplar AS pk, e.numero_patrimonio, e.localizacao, e.id_livro 
                 FROM Exemplar e
-                JOIN Livro l ON e.id_livro = l.id_livro
             """
             params = []
             
             if query:
-                # Convertendo numero_patrimonio (integer) para texto para o ILIKE
-                sql += " WHERE l.nome ILIKE %s OR e.numero_patrimonio::text ILIKE %s"
+                # 2. Filtragem via Subquery (Substitui o JOIN no WHERE)
+                # Buscamos o ID do livro em uma subconsulta para filtrar o exemplar
+                sql += """
+                    WHERE e.numero_patrimonio::text ILIKE %s 
+                    OR e.id_livro IN (SELECT id_livro FROM Livro WHERE nome ILIKE %s)
+                """
                 params.extend([f'%{query}%', f'%{query}%'])
-            else:
-                sql += " ORDER BY l.nome, e.numero_patrimonio"
+            
+            # Ordenação via Subquery no ORDER BY
+            sql += " ORDER BY (SELECT nome FROM Livro WHERE id_livro = e.id_livro), e.numero_patrimonio"
 
             cursor.execute(sql, params)
             exemplares = dictfetchall(cursor)
+
+            # 3. "Hidratação" Manual dos Dados (Substitui o JOIN no SELECT)
+            # Para cada exemplar, fazemos uma query extra para buscar o nome do livro.
+            # Conhecido como padrão "N+1", usado aqui para fins didáticos de separação de responsabilidade.
+            for exemplar in exemplares:
+                cursor.execute("SELECT nome FROM Livro WHERE id_livro = %s", [exemplar['id_livro']])
+                row = cursor.fetchone()
+                exemplar['livro_nome'] = row[0] if row else "Livro Desconhecido"
 
         return render(request, 'exemplar/consultar_exemplar.html', {'exemplares': exemplares})
     
@@ -70,35 +79,26 @@ def consultar_exemplares_view(request):
         messages.error(request, f"Ocorreu um erro ao consultar os exemplares: {e}")
         return redirect('home')
 
-# UPDATE (Atualizar Exemplar)
+# UPDATE (Atualizar Exemplar - SEM JOIN)
 def atualizar_exemplar_view(request, pk):
     with connection.cursor() as cursor:
-        # CORREÇÃO: Buscando os campos corretos. Usando 'e.id_livro'.
-        cursor.execute(
-            """
-            SELECT e.id_exemplar, e.id_livro, e.numero_patrimonio, e.localizacao, 
-                   e.dt_aquisicao, e.dt_publicacao, e.edicao, l.nome AS livro_nome
-            FROM Exemplar e
-            JOIN Livro l ON e.id_livro = l.id_livro
-            WHERE e.id_exemplar = %s
-            """, 
-            [pk]
-        )
+        # 1. Recupera dados do Exemplar
+        cursor.execute("SELECT id_exemplar, id_livro, numero_patrimonio, localizacao, dt_aquisicao, dt_publicacao, edicao FROM Exemplar WHERE id_exemplar = %s", [pk])
         row = cursor.fetchone()
         if not row:
             messages.error(request, 'Exemplar não encontrado.')
             return redirect('exemplares:exemplar_list')
         
-        # CORREÇÃO: Mapeamento correto dos campos.
+        # 2. Query Separada para recuperar o Nome do Livro (para exibição)
+        id_livro_atual = row[1]
+        cursor.execute("SELECT nome FROM Livro WHERE id_livro = %s", [id_livro_atual])
+        livro_row = cursor.fetchone()
+        nome_livro = livro_row[0] if livro_row else "Desconhecido"
+
         exemplar_data = {
-            'pk': row[0],
-            'livro': row[1],
-            'numero_patrimonio': row[2],
-            'localizacao': row[3],
-            'dt_aquisicao': row[4],
-            'dt_publicacao': row[5],
-            'edicao': row[6],
-            'livro_nome': row[7] # Usado no título da página
+            'pk': row[0], 'livro': row[1], 'numero_patrimonio': row[2],
+            'localizacao': row[3], 'dt_aquisicao': row[4], 'dt_publicacao': row[5],
+            'edicao': row[6], 'livro_nome': nome_livro
         }
 
     if request.method == 'POST':
@@ -107,16 +107,14 @@ def atualizar_exemplar_view(request, pk):
             dados = form.cleaned_data
             try:
                 with connection.cursor() as cursor:
-                    # CORREÇÃO: Query de UPDATE com os campos corretos.
+                    # UPDATE padrão
                     cursor.execute(
                         """
                         UPDATE Exemplar
-                        SET id_livro=%s, numero_patrimonio=%s, localizacao=%s, 
-                            dt_aquisicao=%s, dt_publicacao=%s, edicao=%s
+                        SET id_livro=%s, numero_patrimonio=%s, localizacao=%s, dt_aquisicao=%s, dt_publicacao=%s, edicao=%s
                         WHERE id_exemplar = %s
                         """,
-                        [dados['livro'], dados['numero_patrimonio'], dados['localizacao'], 
-                         dados['dt_aquisicao'], dados['dt_publicacao'], dados['edicao'], pk]
+                        [dados['livro'], dados['numero_patrimonio'], dados['localizacao'], dados['dt_aquisicao'], dados['dt_publicacao'], dados['edicao'], pk]
                     )
                 messages.success(request, 'Exemplar atualizado com sucesso!')
                 return redirect('exemplares:exemplar_list')
@@ -125,48 +123,39 @@ def atualizar_exemplar_view(request, pk):
     else:
         form = ExemplarForm(initial=exemplar_data)
 
-    context = {
-        'form': form,
-        'exemplar': exemplar_data,
-        'editando': True
-    }
+    context = {'form': form, 'exemplar': exemplar_data, 'editando': True}
     return render(request, 'exemplar/cadastrar_exemplar.html', context)
 
-# DELETE (Excluir Exemplar)
+# DELETE (Excluir Exemplar - SEM JOIN)
 def excluir_exemplar_view(request, pk):
+    # 1. Busca dados para montar a mensagem de confirmação
     with connection.cursor() as cursor:
-        # Busca o patrimônio e o nome do livro associado
-        cursor.execute(
-            """
-            SELECT e.numero_patrimonio, l.nome
-            FROM Exemplar e
-            JOIN Livro l ON e.id_livro = l.id_livro
-            WHERE e.id_exemplar = %s
-            """,
-            [pk]
-        )
+        cursor.execute("SELECT numero_patrimonio, id_livro FROM Exemplar WHERE id_exemplar = %s", [pk])
         exemplar_row = cursor.fetchone()
     
     if not exemplar_row:
         messages.error(request, 'Exemplar não encontrado.')
         return redirect('exemplares:exemplar_list')
     
-    exemplar_data = {
-        'numero_patrimonio': exemplar_row[0],
-        'livro_nome': exemplar_row[1]  # <-- Aqui guardamos o nome do livro
-    }
+    # 2. Busca nome do livro separadamente
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT nome FROM Livro WHERE id_livro = %s", [exemplar_row[1]])
+        livro_row = cursor.fetchone()
+        nome_livro = livro_row[0] if livro_row else "Desconhecido"
+
+    exemplar_data = {'numero_patrimonio': exemplar_row[0], 'livro_nome': nome_livro}
 
     if request.method == 'POST':
         try:
             with connection.cursor() as cursor:
+                # Tenta Exclusão Física
                 cursor.execute("DELETE FROM Exemplar WHERE id_exemplar = %s", [pk])
             
-            # Mensagem de sucesso usa o patrimônio (pois foi ele que sumiu)
             messages.success(request, f'Exemplar "{exemplar_data["numero_patrimonio"]}" excluído com sucesso.')
             return redirect('exemplares:exemplar_list')
             
         except IntegrityError:
-            # CORREÇÃO AQUI: Usamos exemplar_data["livro_nome"] na mensagem de erro
+            # Captura erro se o exemplar estiver em um Empréstimo ativo
             messages.error(request, f'Não é possível excluir este exemplar do livro "{exemplar_data["livro_nome"]}", pois ele está associado a um empréstimo.')
             return redirect('exemplares:exemplar_list')
             
