@@ -103,51 +103,90 @@ def cadastrar_emprestimo_view(request):
 def consultar_emprestimos_view(request):
     query = request.GET.get('q', '') 
     
+    contexto = { 'query': query }
+    
     try:
         with connection.cursor() as cursor:
-            # 1. Query Principal: Traz apenas dados da tabela Empréstimo
-            sql = "SELECT id_emprestimo AS pk, dt_prevista_devolucao, status, id_exemplar, id_leitor FROM Emprestimo WHERE status = 'Em Andamento'"
+            # 1. CORREÇÃO DA DATA: Adicionado 'dt_emprestimo' ao SELECT
+            sql = """
+                SELECT 
+                    id_emprestimo AS pk,
+                    dt_emprestimo,          
+                    dt_prevista_devolucao,
+                    status,
+                    id_exemplar,
+                    id_leitor
+                FROM Emprestimo 
+                WHERE status = 'Em Andamento'
+            """
+            
             params = [] 
             
             if query:
-                # 2. Filtragem Complexa via Subqueries (WHERE IN)
-                # Substitui JOINs por verificações de existência nas tabelas relacionadas
+                # 2. Filtros complexos via Subqueries (WHERE IN)
                 sql += """
                     AND (
                         id_leitor IN (SELECT id_leitor FROM Leitor WHERE nome ILIKE %s)
                         OR 
                         id_exemplar IN (SELECT id_exemplar FROM Exemplar WHERE numero_patrimonio::text ILIKE %s)
                         OR
-                        id_exemplar IN (SELECT id_exemplar FROM Exemplar WHERE id_livro IN (SELECT id_livro FROM Livro WHERE nome ILIKE %s))
+                        id_exemplar IN (
+                            SELECT id_exemplar FROM Exemplar 
+                            WHERE id_livro IN (SELECT id_livro FROM Livro WHERE nome ILIKE %s)
+                        )
                     )
                 """
                 params.extend([f'%{query}%', f'%{query}%', f'%{query}%'])
             
+            # 3. CORREÇÃO DA ORDENAÇÃO: Ordena pelo NOME do livro usando Sub-queries
+            sql += """
+                ORDER BY (
+                    SELECT nome FROM Livro WHERE id_livro = (
+                        SELECT id_livro FROM Exemplar WHERE id_exemplar = Emprestimo.id_exemplar
+                    )
+                ) ASC, dt_prevista_devolucao ASC
+            """
+            
             cursor.execute(sql, params)
             emprestimos = dictfetchall(cursor)
 
-            # 3. Hidratação Manual de Dados (Loop N+1)
-            # Para cada empréstimo, fazemos novas consultas para buscar nomes.
+            # 4. Enriquecimento de dados (Loop para buscar nomes)
             hoje = date.today()
             for emp in emprestimos:
-                # Busca Leitor
+                # Busca Nome Leitor
                 cursor.execute("SELECT nome FROM Leitor WHERE id_leitor = %s", [emp['id_leitor']])
-                emp['leitor_nome'] = cursor.fetchone()[0]
+                row = cursor.fetchone()
+                emp['leitor_nome'] = row[0] if row else "Desconhecido"
 
-                # Busca Exemplar e Livro (Sequencial)
+                # Busca Dados Exemplar e Livro
                 cursor.execute("SELECT numero_patrimonio, id_livro FROM Exemplar WHERE id_exemplar = %s", [emp['id_exemplar']])
-                ex_row = cursor.fetchone()
-                emp['numero_patrimonio'] = ex_row[0]
+                row_ex = cursor.fetchone()
                 
-                cursor.execute("SELECT nome FROM Livro WHERE id_livro = %s", [ex_row[1]])
-                emp['livro_nome'] = cursor.fetchone()[0]
+                if row_ex:
+                    emp['numero_patrimonio'] = row_ex[0]
+                    id_livro = row_ex[1]
+                    
+                    cursor.execute("SELECT nome FROM Livro WHERE id_livro = %s", [id_livro])
+                    row_livro = cursor.fetchone()
+                    emp['livro_nome'] = row_livro[0] if row_livro else "Desconhecido"
+                else:
+                    emp['numero_patrimonio'] = "?"
+                    emp['livro_nome'] = "?"
 
-                # Lógica de Interface: Verifica atraso no Python para destacar no HTML
-                emp['is_atrasado'] = emp['dt_prevista_devolucao'] < hoje
-                emp['dias_atraso'] = (hoje - emp['dt_prevista_devolucao']).days if emp['is_atrasado'] else 0
+                # Lógica de Atraso
+                if emp['dt_prevista_devolucao'] < hoje:
+                    emp['is_atrasado'] = True
+                    emp['dias_atraso'] = (hoje - emp['dt_prevista_devolucao']).days
+                else:
+                    emp['is_atrasado'] = False
+            
+            contexto['emprestimos'] = emprestimos
+            contexto['total_ativos'] = len(emprestimos)
 
-        return render(request, 'emprestimo/consultar_emprestimos.html', {'emprestimos': emprestimos})
+        return render(request, 'emprestimo/consultar_emprestimos.html', contexto)
+    
     except Exception as e:
+        messages.error(request, f"Erro ao listar empréstimos: {e}")
         return redirect('home')
 
 # UPDATE (Registrar Devolução)

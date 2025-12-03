@@ -89,16 +89,34 @@ def atualizar_exemplar_view(request, pk):
             messages.error(request, 'Exemplar não encontrado.')
             return redirect('exemplares:exemplar_list')
         
-        # 2. Query Separada para recuperar o Nome do Livro (para exibição)
+        # --- CORREÇÃO DE DATAS AQUI ---
+        # Formata 'dt_aquisicao' (índice 4)
+        dt_aquisicao_banco = row[4]
+        dt_aquisicao_fmt = dt_aquisicao_banco.strftime('%d/%m/%Y') if dt_aquisicao_banco else None
+
+        # Formata 'dt_publicacao' (índice 5)
+        # Atenção: dt_publicacao pode ser apenas um ano (YYYY) ou data completa dependendo do seu banco. 
+        # Se for DATE, usamos strftime. Se for INTEGER, deixamos como está.
+        # Assumindo que é DATE conforme seu formulário:
+        dt_publicacao_banco = row[5]
+        dt_publicacao_fmt = dt_publicacao_banco.strftime('%d/%m/%Y') if dt_publicacao_banco else None
+        # ------------------------------
+
+        # 2. Query Separada para recuperar o Nome do Livro
         id_livro_atual = row[1]
         cursor.execute("SELECT nome FROM Livro WHERE id_livro = %s", [id_livro_atual])
         livro_row = cursor.fetchone()
         nome_livro = livro_row[0] if livro_row else "Desconhecido"
 
         exemplar_data = {
-            'pk': row[0], 'livro': row[1], 'numero_patrimonio': row[2],
-            'localizacao': row[3], 'dt_aquisicao': row[4], 'dt_publicacao': row[5],
-            'edicao': row[6], 'livro_nome': nome_livro
+            'pk': row[0], 
+            'livro': row[1], 
+            'numero_patrimonio': row[2],
+            'localizacao': row[3], 
+            'dt_aquisicao': dt_aquisicao_fmt,   # Usa a data formatada
+            'dt_publicacao': dt_publicacao_fmt, # Usa a data formatada
+            'edicao': row[6], 
+            'livro_nome': nome_livro
         }
 
     if request.method == 'POST':
@@ -125,7 +143,6 @@ def atualizar_exemplar_view(request, pk):
 
     context = {'form': form, 'exemplar': exemplar_data, 'editando': True}
     return render(request, 'exemplar/cadastrar_exemplar.html', context)
-
 # DELETE (Excluir Exemplar - SEM JOIN)
 def excluir_exemplar_view(request, pk):
     # 1. Busca dados para montar a mensagem de confirmação
